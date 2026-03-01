@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Judge Vortex | Execution Workspace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script type="importmap">
+    {
+      "imports": {
+        "@codemirror/state": "https://esm.sh/@codemirror/state",
+        "@codemirror/view": "https://esm.sh/@codemirror/view",
+        "@codemirror/commands": "https://esm.sh/@codemirror/commands",
+        "@codemirror/language": "https://esm.sh/@codemirror/language",
+        "@codemirror/autocomplete": "https://esm.sh/@codemirror/autocomplete",
+        "@codemirror/theme-one-dark": "https://esm.sh/@codemirror/theme-one-dark",
+        "codemirror": "https://esm.sh/codemirror",
+        "@codemirror/lang-python": "https://esm.sh/@codemirror/lang-python",
+        "@codemirror/lang-cpp": "https://esm.sh/@codemirror/lang-cpp",
+        "@codemirror/lang-java": "https://esm.sh/@codemirror/lang-java",
+        "@codemirror/lang-javascript": "https://esm.sh/@codemirror/lang-javascript",
+        "@codemirror/lang-rust": "https://esm.sh/@codemirror/lang-rust",
+        "@codemirror/lang-php": "https://esm.sh/@codemirror/lang-php",
+        "@codemirror/lang-go": "https://esm.sh/@codemirror/lang-go",
+        "@codemirror/legacy-modes/mode/ruby": "https://esm.sh/@codemirror/legacy-modes/mode/ruby",
+        "@codemirror/legacy-modes/mode/swift": "https://esm.sh/@codemirror/legacy-modes/mode/swift",
+        "@codemirror/legacy-modes/mode/haskell": "https://esm.sh/@codemirror/legacy-modes/mode/haskell",
+        "@codemirror/legacy-modes/mode/clike": "https://esm.sh/@codemirror/legacy-modes/mode/clike"
+      }
+    }
+    </script>
+
+    <style>
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #484f58; }
+
+        /* Resizer Gutters */
+        .gutter-h { cursor: col-resize; width: 6px; background: transparent; transition: background 0.2s; z-index: 50; }
+        .gutter-h:hover, .gutter-h.active { background: #3b82f6; }
+        
+        .gutter-v { cursor: row-resize; height: 6px; background: transparent; transition: background 0.2s; z-index: 50; }
+        .gutter-v:hover, .gutter-v.active { background: #3b82f6; }
+        .resizing { user-select: none; pointer-events: none; }
+
+        /* CodeMirror Specific Styling */
+        .cm-editor { height: 100%; width: 100%; outline: none !important; font-size: 15px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+        .cm-scroller { overflow: auto; }
+        .cm-focused { outline: none !important; }
+    </style>
+</head>
+<body class="bg-[#0d1117] text-gray-300 h-screen flex flex-col font-sans overflow-hidden">
+
+    <nav class="bg-[#161b22] border-b border-gray-700 p-3 flex justify-between items-center z-30 shrink-0">
+        <div class="flex items-center space-x-3">
+            <h1 class="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">Judge Vortex</h1>
+            <span class="bg-gray-800 text-[10px] px-2 py-1 rounded text-gray-400 border border-gray-700 uppercase tracking-tighter">RCE v3.0</span>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+            <select id="language" class="bg-gray-800 text-gray-300 text-sm px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-blue-500">
+                <option value="python">Python 3.11</option>
+                <option value="cpp">C++ (GCC)</option>
+                <option value="c">C (GCC)</option>
+                <option value="java">Java 17</option>
+                <option value="javascript">JavaScript (Node 18)</option>
+                <option value="typescript">TypeScript (Node 18)</option>
+                <option value="ruby">Ruby 3.2</option>
+                <option value="go">Go 1.21</option>
+                <option value="rust">Rust 1.75</option>
+                <option value="php">PHP 8.2</option>
+                <option value="csharp">C# (.NET 8.0)</option>
+                <option value="swift">Swift (Latest)</option>
+                <option value="haskell">Haskell 9.4</option>
+            </select>
+            
+            <button id="runBtn" class="bg-green-600 hover:bg-green-500 text-white px-5 py-2 rounded text-sm font-bold shadow-lg shadow-green-600/20 transition flex items-center">
+                <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
+                Execute
+            </button>
+            <button id="logoutBtn" class="text-gray-400 hover:text-red-400 text-sm transition px-2">Log Out</button>
+        </div>
+    </nav>
+
+    <div class="flex-1 flex overflow-hidden w-full">
+        
+        <div id="leftPanel" class="flex flex-col min-w-[200px]" style="width: 60%;">
+            
+            <div id="editorTop" class="flex-1 relative bg-[#1e1e1e] overflow-hidden border-r border-gray-800">
+                <div id="editorContainer" class="absolute inset-0"></div>
+            </div>
+
+            <div id="gutterV" class="gutter-v shrink-0 border-y border-gray-800"></div>
+
+            <div id="inputBottom" class="bg-[#161b22] p-3 flex flex-col shrink-0" style="height: 180px;">
+                <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin)</label>
+                <textarea id="customInput" placeholder="Enter test case inputs..." 
+                    class="flex-1 w-full bg-[#0d1117] border border-gray-700 rounded p-3 font-mono text-sm text-gray-300 focus:outline-none focus:border-blue-500 box-border resize-none transition"></textarea>
+            </div>
+        </div>
+
+        <div id="gutterH" class="gutter-h shrink-0 border-x border-gray-800"></div>
+
+        <div id="rightPanel" class="flex-1 min-w-[300px] flex flex-col bg-[#0d1117]">
+            <div class="bg-[#161b22] flex border-b border-gray-800 shrink-0 sticky top-0 z-20">
+                <button id="tab-console" class="flex-1 px-5 py-3 text-xs font-bold text-blue-400 border-b-2 border-blue-500 uppercase tracking-widest bg-[#0d1117] focus:outline-none">Console</button>
+                <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-300 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent">History</button>
+            </div>
+            
+            <div class="flex-1 relative overflow-hidden">
+                <div id="terminal" class="absolute inset-0 p-5 overflow-y-auto font-mono text-sm leading-relaxed block">
+                    <div class="flex items-start gap-3 text-gray-400 mt-2">
+                        <span class="text-green-500 font-bold shrink-0">root@vortex:~$</span> 
+                        <span class="break-words w-full text-left">ready. payload awaiting...</span>
+                    </div>
+                </div>
+
+                <div id="historyPanel" class="absolute inset-0 overflow-y-auto hidden bg-[#0d1117]">
+                    <div id="historyList" class="divide-y divide-gray-800 flex flex-col"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { basicSetup } from "codemirror";
+        import { EditorView, keymap } from "@codemirror/view";
+        import { EditorState, Compartment } from "@codemirror/state";
+        import { indentWithTab } from "@codemirror/commands";
+        import { oneDark } from "@codemirror/theme-one-dark";
+        
+        // 🟢 2. All 14 Language Imports
+        import { StreamLanguage } from "@codemirror/language";
+        import { completeFromList, snippetCompletion } from "@codemirror/autocomplete";
+        import { python } from "@codemirror/lang-python";
+        import { cpp, cppLanguage } from "@codemirror/lang-cpp";
+        import { java } from "@codemirror/lang-java";
+        import { javascript } from "@codemirror/lang-javascript";
+        import { rust } from "@codemirror/lang-rust";
+        import { php } from "@codemirror/lang-php";
+        import { go } from "@codemirror/lang-go";
+        
+        // Legacy modes for languages without official CM6 packages yet
+        import { ruby } from "@codemirror/legacy-modes/mode/ruby";
+        import { swift } from "@codemirror/legacy-modes/mode/swift";
+        import { haskell } from "@codemirror/legacy-modes/mode/haskell";
+        import { csharp } from "@codemirror/legacy-modes/mode/clike";
+
+        // --- Auth & Boilerplates ---
+        const token = localStorage.getItem('vortex_token');
+        const userId = localStorage.getItem('vortex_user_id');
+        if (!token || !userId) window.location.href = '/login/';
+
+        document.getElementById('logoutBtn').onclick = () => { localStorage.clear(); window.location.href = '/login/'; };
+
+        const boilerplate = {
+            'python': 'def solve():\n    print("Hello from Judge Vortex!")\n\nif __name__ == "__main__":\n    solve()',
+            'cpp': '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from Judge Vortex!\\n";\n    return 0;\n}',
+            'c': '#include <stdio.h>\n\nint main() {\n    printf("Hello from Judge Vortex!\\n");\n    return 0;\n}',
+            'java': 'import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Judge Vortex!");\n    }\n}',
+            'javascript': 'console.log("Hello from Judge Vortex!");',
+            'typescript': 'const message: string = "Hello from Judge Vortex!";\nconsole.log(message);',
+            'ruby': 'puts "Hello from Judge Vortex!"',
+            'go': 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello from Judge Vortex!")\n}',
+            'rust': 'fn main() {\n    println!("Hello from Judge Vortex!");\n}',
+            'php': '<?php\n\necho "Hello from Judge Vortex!\\n";\n?>',
+            'csharp': 'using System;\n\nnamespace JudgeVortex {\n    class Program {\n        static void Main(string[] args) {\n            Console.WriteLine("Hello from Judge Vortex!");\n        }\n    }\n}',
+            'swift': 'print("Hello from Judge Vortex!")',
+            'haskell': 'main :: IO ()\nmain = putStrLn "Hello from Judge Vortex!"'
+        };
+
+        // --- 3. Language Extension Router ---
+        const languageConf = new Compartment();
+        const getLangExtension = (langStr) => {
+            switch(langStr) {
+                case 'python': return python();
+                case 'cpp': case 'c': return cpp();
+                case 'java': return java();
+                case 'javascript': case 'typescript': return javascript();
+                case 'rust': return rust();
+                case 'php': return php();
+                case 'go': return go();
+                // StreamLanguage wrappers for legacy modes
+                case 'ruby': return StreamLanguage.define(ruby);
+                case 'swift': return StreamLanguage.define(swift);
+                case 'haskell': return StreamLanguage.define(haskell);
+                case 'csharp': return StreamLanguage.define(csharp);
+                default: return python(); 
+            }
+        };
+
+        const initialLang = document.getElementById('language').value;
+        const editorView = new EditorView({
+            state: EditorState.create({
+                doc: boilerplate[initialLang] || boilerplate['python'],
+                extensions: [
+                    basicSetup,
+                    oneDark,
+                    keymap.of([indentWithTab]),
+                    languageConf.of(getLangExtension(initialLang)),
+                    EditorView.theme({ "&": { backgroundColor: "#1e1e1e" } })
+                ]
+            }),
+            parent: document.getElementById('editorContainer')
+        });
+
+        // --- Language Switcher & Boilerplate Logic ---
+        document.getElementById('language').addEventListener('change', (e) => {
+            const lang = e.target.value;
+            
+            // 1. Instantly update the Syntax Highlighting colors
+            editorView.dispatch({
+                effects: languageConf.reconfigure(getLangExtension(lang))
+            });
+
+            // 2. Check the current code
+            const cur = editorView.state.doc.toString();
+            const clean = (s) => s.replace(/\s+/g, ''); // Removes all whitespace for a strict comparison
+            
+            const isUntouchedBoilerplate = Object.values(boilerplate).some(bp => clean(bp) === clean(cur));
+            const isEmpty = clean(cur) === '';
+
+            // 3. Swap the text
+            if (isUntouchedBoilerplate || isEmpty) {
+                // If it's empty or just a default template, swap it instantly
+                editorView.dispatch({
+                    changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]}
+                });
+            } else {
+                // 🚨 UX UPGRADE: If they wrote custom code, ask before destroying it!
+                if (confirm(`You have unsaved code. Overwrite it with the default ${lang} template?`)) {
+                    editorView.dispatch({
+                        changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]}
+                    });
+                }
+            }
+        });
+
+        // --- Resizing Engine ---
+        const leftPanel = document.getElementById('leftPanel');
+        const gutterH = document.getElementById('gutterH');
+        const editorTop = document.getElementById('editorTop');
+        const inputBottom = document.getElementById('inputBottom');
+        const gutterV = document.getElementById('gutterV');
+
+        let isResizingH = false; let isResizingV = false;
+
+        gutterH.addEventListener('mousedown', () => { isResizingH = true; gutterH.classList.add('active'); document.body.classList.add('resizing'); });
+        gutterV.addEventListener('mousedown', () => { isResizingV = true; gutterV.classList.add('active'); document.body.classList.add('resizing'); });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isResizingH) {
+                const newWidth = (e.clientX / window.innerWidth) * 100;
+                if (newWidth > 20 && newWidth < 85) leftPanel.style.width = `${newWidth}%`;
+            }
+            if (isResizingV) {
+                const offsetTop = editorTop.getBoundingClientRect().top;
+                const newHeight = e.clientY - offsetTop;
+                if (newHeight > 100 && (window.innerHeight - e.clientY) > 80) {
+                    inputBottom.style.height = `${window.innerHeight - e.clientY - 20}px`;
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            isResizingH = false; isResizingV = false;
+            gutterH.classList.remove('active'); gutterV.classList.remove('active');
+            document.body.classList.remove('resizing');
+        });
+
+        // --- Execution & UI Rendering ---
+        const terminalEl = document.getElementById('terminal');
+        function appendPrompt(text, color = "text-gray-300") {
+            terminalEl.innerHTML += `<div class="flex items-start gap-3 mt-4"><span class="text-green-500 font-bold shrink-0">root@vortex:~$</span><span class="${color} break-words w-full text-left">${text}</span></div>`;
+            terminalEl.scrollTop = terminalEl.scrollHeight;
+        }
+
+        function appendBlock(text, textColor = "text-gray-300") {
+            const isError = textColor.includes("red");
+            const safeText = text ? text.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;") : "(No output)";
+            terminalEl.innerHTML += `
+            <div class="ml-4 mt-2 mb-4 p-3 bg-[#0a0d12] border ${isError ? 'border-red-900' : 'border-gray-800'} rounded text-sm font-mono ${textColor}">
+                <pre class="whitespace-pre-wrap break-all m-0 p-0 text-left leading-relaxed">${safeText}</pre>
+            </div>`;
+            terminalEl.scrollTop = terminalEl.scrollHeight;
+        }
+
+        const wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+        const socket = new WebSocket(`${wsProtocol}${window.location.host}/ws/submissions/${userId}/`);
+        socket.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            appendPrompt(`Execution finished: ${data.status} [${data.execution_time}ms]`, data.status === "SUCCESS" ? "text-green-400" : "text-red-400");
+            appendBlock(data.output, data.status === "SUCCESS" ? "text-gray-300" : "text-red-400");
+        };
+
+        document.getElementById('runBtn').onclick = async () => {
+            tabConsole.click(); terminalEl.innerHTML = ''; 
+            const code = editorView.state.doc.toString();
+            const lang = document.getElementById('language').value;
+            const input = document.getElementById('customInput').value;
+            
+            appendPrompt(`Submitting ${lang} code...`, "text-blue-400");
+            try {
+                await fetch('/api/submissions/submit/', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                    body: JSON.stringify({ code, language: lang, user_input: input, time_limit_ms: 60000 })
+                });
+            } catch (err) { appendBlock(`API Error: ${err.message}`, "text-red-500"); }
+        };
+
+        document.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('runBtn').click();
+            }
+        });
+
+        // --- Tabs & History ---
+        const tabConsole = document.getElementById('tab-console');
+        const tabHistory = document.getElementById('tab-history');
+        const historyPanel = document.getElementById('historyPanel');
+        let submissionCache = {};
+
+        tabConsole.onclick = () => { tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-400 border-b-2 border-blue-500 uppercase tracking-widest bg-[#0d1117] focus:outline-none"; tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-300 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent"; terminalEl.classList.remove('hidden'); historyPanel.classList.add('hidden'); };
+        tabHistory.onclick = () => { tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-400 border-b-2 border-blue-500 uppercase tracking-widest bg-[#0d1117] focus:outline-none"; tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-300 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent"; historyPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); fetchHistory(); };
+
+        async function fetchHistory() {
+            const listEl = document.getElementById('historyList');
+            listEl.innerHTML = '<div class="p-6 text-center text-gray-500 animate-pulse text-xs">Accessing history...</div>';
+            try {
+                const res = await fetch('/api/submissions/', { headers: { 'Authorization': `Token ${token}` }});
+                const data = await res.json();
+                listEl.innerHTML = '';
+                submissionCache = {};
+                
+                (Array.isArray(data) ? data : data.results || []).forEach(sub => {
+                    const statusColor = sub.status === "SUCCESS" ? "text-green-400" : "text-red-400";
+                    submissionCache[sub.id] = sub;
+
+                    listEl.innerHTML += `
+                    <div data-id="${sub.id}" class="history-row p-4 hover:bg-[#161b22] border-l-4 ${sub.status === "SUCCESS" ? 'border-green-500' : 'border-red-500'} group relative cursor-pointer transition-colors">
+                        <div class="flex justify-between mb-1">
+                            <span class="font-bold text-xs ${statusColor}">${sub.status}</span>
+                            <span class="text-[10px] text-gray-500 font-mono">${new Date(sub.submitted_at).toLocaleString()}</span>
+                        </div>
+                        <div class="flex justify-between items-center text-xs">
+                            <div class="flex space-x-2">
+                                <span class="text-blue-300 font-mono">${sub.language}</span>
+                                <span class="text-gray-500 font-mono">${sub.execution_time_ms || 0}ms</span>
+                            </div>
+                            <button data-del="${sub.id}" class="del-btn text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </div>`;
+                });
+
+                document.querySelectorAll('.history-row').forEach(row => {
+                    row.onclick = (e) => {
+                        const id = row.getAttribute('data-id');
+                        loadPastCode(id);
+                    };
+                });
+                document.querySelectorAll('.del-btn').forEach(btn => {
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        const id = btn.getAttribute('data-del');
+                        deleteSubmission(id);
+                    };
+                });
+
+            } catch(e) { listEl.innerHTML = '<div class="p-6 text-red-500 text-center text-xs">Error loading history.</div>'; }
+        }
+
+        function loadPastCode(id) {
+            const sub = submissionCache[id];
+            if (!sub || !sub.code) return;
+
+            const langDropdown = document.getElementById('language');
+            langDropdown.value = sub.language;
+
+            editorView.dispatch({
+                effects: languageConf.reconfigure(getLangExtension(sub.language))
+            });
+
+            editorView.dispatch({
+                changes: {from: 0, to: editorView.state.doc.length, insert: sub.code}
+            });
+            
+            tabConsole.click();
+        }
+
+        async function deleteSubmission(id) {
+            if (confirm("Delete record?")) { 
+                await fetch(`/api/submissions/${id}/delete/`, { method: 'DELETE', headers: { 'Authorization': `Token ${token}` }}); 
+                fetchHistory(); 
+            }
+        }
+    </script>
+</body>
+</html>

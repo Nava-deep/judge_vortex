@@ -1,0 +1,13 @@
+global:
+  scrape_interval: 5s # Check for new data every 5 seconds
+
+scrape_configs:
+  # 1. Monitor the Executor Sandbox
+  - job_name: 'vortex-executor'
+    static_configs:
+      - targets: ['host.docker.internal:8001']
+
+  # 2. Monitor the Django API (if you add django-prometheus later)
+  - job_name: 'vortex-api'
+    static_configs:
+      - targets: ['host.docker.internal:53562']
