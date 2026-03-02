@@ -1,0 +1,119 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Judge Vortex | High-Performance Code Execution</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // THE BOUNCER: If you have a token, go straight to the workspace!
+        if (localStorage.getItem('vortex_token')) {
+            window.location.href = "{% url 'workspace_page' %}";
+        }
+    </script>
+    <style>
+        /* A subtle tech-inspired grid background pattern */
+        .bg-grid {
+            background-size: 40px 40px;
+            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+        }
+        
+    </style>
+</head>
+<body class="bg-[#0d1117] text-gray-300 font-sans antialiased min-h-screen flex flex-col relative">
+
+    <div class="absolute inset-0 bg-grid z-0 pointer-events-none"></div>
+
+    <div class="absolute top-[-10%] left-[20%] w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] z-0 pointer-events-none"></div>
+    <div class="absolute top-[20%] right-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] z-0 pointer-events-none"></div>
+
+    <nav class="relative z-10 border-b border-gray-800 bg-[#0d1117]/80 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-tight">Judge Vortex</h1>
+                <span class="bg-gray-800 text-[10px] px-2 py-1 rounded text-gray-400 border border-gray-700 uppercase tracking-tighter hidden sm:block">RCE v3.0</span>
+            </div>
+            <div class="flex items-center space-x-4">
+                <a href="{% url 'login_page' %}" class="text-sm font-medium text-gray-400 hover:text-white transition">Sign In</a>
+                <a href="{% url 'register_page' %}" class="text-sm font-bold bg-white text-black px-4 py-2 rounded hover:bg-gray-200 transition shadow-lg shadow-white/10">Get Started</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 py-20 mt-10">
+        <div class="inline-flex items-center space-x-2 bg-gray-900 border border-gray-800 rounded-full px-4 py-1.5 mb-8 shadow-sm">
+            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+            <span class="text-xs font-mono text-gray-400">All execution nodes are online</span>
+        </div>
+
+        <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl text-white">
+            Execute Code with <br class="hidden md:block"/>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">Zero Friction.</span>
+        </h1>
+        
+        <p class="text-lg md:text-xl text-gray-400 max-w-2xl mb-10 leading-relaxed">
+            A high-performance, containerized execution environment. Write, compile, and run in 14+ languages with real-time WebSocket streams and deep system isolation.
+        </p>
+
+        <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
+            <a href="{% url 'register_page' %}" class="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow-lg shadow-blue-600/20 transition flex items-center justify-center">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+                Enter the Workspace
+            </a>
+            <a href="{% url 'login_page' %}" class="w-full sm:w-auto px-8 py-3.5 bg-transparent border border-gray-700 hover:border-gray-500 text-gray-300 font-bold rounded transition text-center">
+                Sign In to Platform
+            </a>
+        </div>
+    </main>
+
+    <section class="relative z-10 max-w-7xl mx-auto px-6 py-20 border-t border-gray-800/50 w-full">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            
+            <div class="bg-[#161b22] border border-gray-800 p-8 rounded-xl hover:border-blue-500/50 transition duration-300 group">
+                <div class="w-12 h-12 bg-blue-900/30 rounded-lg flex items-center justify-center mb-6 border border-blue-800/50 group-hover:bg-blue-600/20 transition">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Pre-Warmed Compilers</h3>
+                <p class="text-sm text-gray-400 leading-relaxed">
+                    Say goodbye to cold starts. Our architecture keeps Java, Rust, and C# environments pre-warmed so your code executes in milliseconds.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-gray-800 p-8 rounded-xl hover:border-purple-500/50 transition duration-300 group">
+                <div class="w-12 h-12 bg-purple-900/30 rounded-lg flex items-center justify-center mb-6 border border-purple-800/50 group-hover:bg-purple-600/20 transition">
+                    <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">Docker Sandboxing</h3>
+                <p class="text-sm text-gray-400 leading-relaxed">
+                    Complete isolation. Every submission runs in an ephemeral, memory-capped Docker container with strict time limits and disabled networking.
+                </p>
+            </div>
+
+            <div class="bg-[#161b22] border border-gray-800 p-8 rounded-xl hover:border-green-500/50 transition duration-300 group">
+                <div class="w-12 h-12 bg-green-900/30 rounded-lg flex items-center justify-center mb-6 border border-green-800/50 group-hover:bg-green-600/20 transition">
+                    <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-3">CodeMirror 6 Engine</h3>
+                <p class="text-sm text-gray-400 leading-relaxed">
+                    Write code comfortably with a lightweight, lightning-fast editor featuring intelligent syntax highlighting and autocomplete for 14 languages.
+                </p>
+            </div>
+
+        </div>
+    </section>
+
+    <footer class="relative z-10 border-t border-gray-800 mt-auto">
+        <div class="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center text-xs text-gray-500">
+            <p>&copy; 2026 Judge Vortex. All rights reserved.</p>
+            <div class="flex space-x-4 mt-4 md:mt-0">
+                <a href="#" class="hover:text-gray-300 transition">Terms</a>
+                <a href="#" class="hover:text-gray-300 transition">Privacy</a>
+                <a href="{% url 'workspace_page' %}" class="hover:text-gray-300 transition">Workspace</a>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

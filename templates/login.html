@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+        // THE BOUNCER: If you have a token, go straight to the workspace!
+        if (localStorage.getItem('vortex_token')) {
+            window.location.href = "{% url 'workspace_page' %}";
+        }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Judge Vortex | Login</title>

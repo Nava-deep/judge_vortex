@@ -1,7 +1,7 @@
 import json
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework import status, generics
@@ -15,7 +15,6 @@ from channels.layers import get_channel_layer
 from .throttles import DynamicQueueThrottle
 import logging
 logger = logging.getLogger(__name__)
-
 
 # --- Authentication Endpoints ---
 
@@ -37,7 +36,9 @@ def register_view(request):
     
     return Response({'token': token.key, 'user_id': user.id, 'message': 'Account created successfully'}, status=status.HTTP_201_CREATED)
 
+
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def login_view(request):
     username = request.data.get('username')
@@ -46,7 +47,6 @@ def login_view(request):
     
     if user is not None:
         token, _ = Token.objects.get_or_create(user=user)
-        # UPDATE THIS LINE to return the user_id
         return Response({'token': token.key, 'user_id': user.id, 'message': 'Login successful'}, status=status.HTTP_200_OK)
         
     return Response({'error': 'Invalid Credentials'}, status=status.HTTP_401_UNAUTHORIZED)

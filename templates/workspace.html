@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Judge Vortex | Execution Workspace</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // 🛡️ THE BOUNCER: If you DON'T have a token, get out of the workspace!
+        if (!localStorage.getItem('vortex_token')) {
+            window.location.href = "{% url 'login_page' %}";
+        }
+    </script>
     
     <script type="importmap">
     {
@@ -279,7 +285,7 @@
             terminalEl.scrollTop = terminalEl.scrollHeight;
         }
 
-        // 🟢 UPDATED: Now accepts 'status' to fully style the box
+        // UPDATED: Now accepts 'status' to fully style the box
         function appendBlock(text, status = "SUCCESS") {
             const isError = status !== "SUCCESS";
             const safeText = text ? text.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;") : "(No output)";
