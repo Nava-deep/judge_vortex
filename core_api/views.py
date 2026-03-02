@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework import status, generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.authentication import TokenAuthentication
 from .models import Submission
 from .serializers import SubmissionSerializer
 from kafka import KafkaProducer
@@ -47,27 +46,10 @@ def login_view(request):
     user = authenticate(username=username, password=password)
     
     if user is not None:
-            token, _ = Token.objects.get_or_create(user=user)
-            user_theme = user.profile.theme 
-            return Response({
-                'token': token.key, 
-                'user_id': user.id, 
-                'theme': user_theme,
-                'message': 'Login successful'
-            }, status=status.HTTP_200_OK)
+        token, _ = Token.objects.get_or_create(user=user)
+        return Response({'token': token.key, 'user_id': user.id, 'message': 'Login successful'}, status=status.HTTP_200_OK)
         
     return Response({'error': 'Invalid Credentials'}, status=status.HTTP_401_UNAUTHORIZED)
-
-@api_view(['POST'])
-@authentication_classes([TokenAuthentication])
-@permission_classes([IsAuthenticated])
-def update_theme(request):
-    new_theme = request.data.get('theme')
-    if new_theme in ['dark', 'light', 'dracula']: # Validate allowed themes
-        request.user.profile.theme = new_theme
-        request.user.profile.save()
-        return Response({'status': 'Theme updated'})
-    return Response({'error': 'Invalid theme'}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

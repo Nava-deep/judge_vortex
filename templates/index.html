@@ -11,15 +11,6 @@
         if (localStorage.getItem('vortex_token')) {
             window.location.href = "{% url 'workspace_page' %}";
         }
-        const savedTheme = localStorage.getItem('vortex_theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', savedTheme);
-        
-        // If using Tailwind's class-based dark mode:
-        if (savedTheme === 'dark') {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
     </script>
     <style>
         /* A subtle tech-inspired grid background pattern */
