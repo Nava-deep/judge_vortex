@@ -273,16 +273,28 @@
 
         // --- Execution & UI Rendering ---
         const terminalEl = document.getElementById('terminal');
+        
         function appendPrompt(text, color = "text-gray-300") {
             terminalEl.innerHTML += `<div class="flex items-start gap-3 mt-4"><span class="text-green-500 font-bold shrink-0">root@vortex:~$</span><span class="${color} break-words w-full text-left">${text}</span></div>`;
             terminalEl.scrollTop = terminalEl.scrollHeight;
         }
 
-        function appendBlock(text, textColor = "text-gray-300") {
-            const isError = textColor.includes("red");
+        // 🟢 UPDATED: Now accepts 'status' to fully style the box
+        function appendBlock(text, status = "SUCCESS") {
+            const isError = status !== "SUCCESS";
             const safeText = text ? text.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;") : "(No output)";
+            
+            // Dynamic styling based on success/error
+            const borderColor = isError ? 'border-red-900' : 'border-gray-800';
+            const bgColor = isError ? 'bg-[#1a0505]' : 'bg-[#0a0d12]';
+            const textColor = isError ? 'text-red-400' : 'text-gray-300';
+            
+            // Optional: Adds a small header inside the box if it's an error
+            const headerHtml = isError ? `<div class="text-[10px] text-red-600 font-bold uppercase tracking-widest mb-2 opacity-80">${status}:</div>` : '';
+
             terminalEl.innerHTML += `
-            <div class="ml-4 mt-2 mb-4 p-3 bg-[#0a0d12] border ${isError ? 'border-red-900' : 'border-gray-800'} rounded text-sm font-mono ${textColor}">
+            <div class="ml-4 mt-2 mb-4 p-3 ${bgColor} border ${borderColor} rounded text-sm font-mono ${textColor} shadow-sm">
+                ${headerHtml}
                 <pre class="whitespace-pre-wrap break-all m-0 p-0 text-left leading-relaxed">${safeText}</pre>
             </div>`;
             terminalEl.scrollTop = terminalEl.scrollHeight;
@@ -290,10 +302,21 @@
 
         const wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
         const socket = new WebSocket(`${wsProtocol}${window.location.host}/ws/submissions/${userId}/`);
+        
         socket.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            appendPrompt(`Execution finished: ${data.status} [${data.execution_time}ms]`, data.status === "SUCCESS" ? "text-green-400" : "text-red-400");
-            appendBlock(data.output, data.status === "SUCCESS" ? "text-gray-300" : "text-red-400");
+            const isSuccess = data.status === "SUCCESS";
+            
+            // Fallback for time just in case your backend uses time_ms or execution_time
+            const timeMs = data.execution_time !== undefined ? data.execution_time : (data.time_ms || 0);
+            
+            // Make the prompt bolder and redder if it fails
+            const promptColor = isSuccess ? "text-green-400" : "text-red-500 font-bold";
+            
+            appendPrompt(`Execution finished: ${data.status} [${timeMs}ms]`, promptColor);
+            
+            // Pass the raw status to trigger the red background box
+            appendBlock(data.output, data.status);
         };
 
         document.getElementById('runBtn').onclick = async () => {
