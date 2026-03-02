@@ -10,6 +10,15 @@
         if (!localStorage.getItem('vortex_token')) {
             window.location.href = "{% url 'login_page' %}";
         }
+        const savedTheme = localStorage.getItem('vortex_theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        
+        // If using Tailwind's class-based dark mode:
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
     </script>
     
     <script type="importmap">
@@ -67,6 +76,12 @@
         </div>
         
         <div class="flex items-center space-x-4">
+            <label for="themeSelector" class="text-xs text-gray-500 uppercase tracking-wider font-bold">Theme</label>
+            <select id="themeSelector" class="bg-[#161b22] border border-gray-700 text-gray-300 text-sm rounded focus:ring-blue-500 focus:border-blue-500 block px-3 py-1.5 cursor-pointer outline-none transition hover:border-gray-500">
+                <option value="dark">🌙 Dark Mode</option>
+                <option value="light">☀️ Light Mode</option>
+                <option value="dracula">🧛 Dracula</option>
+            </select>
             <select id="language" class="bg-gray-800 text-gray-300 text-sm px-3 py-2 rounded border border-gray-600 focus:outline-none focus:border-blue-500">
                 <option value="python">Python 3.11</option>
                 <option value="cpp">C++ (GCC)</option>
@@ -428,6 +443,44 @@
                 fetchHistory(); 
             }
         }
+
+        // 1. On load, make sure the dropdown shows the correct saved theme
+        window.addEventListener('DOMContentLoaded', () => {
+            const currentTheme = localStorage.getItem('vortex_theme') || 'dark';
+            const selector = document.getElementById('themeSelector');
+            if (selector) {
+                selector.value = currentTheme;
+            }
+        });
+
+        // 2. When the user changes the dropdown, update everything!
+        document.getElementById('themeSelector').addEventListener('change', (e) => {
+            const selectedTheme = e.target.value;
+            
+            // Update the HTML tag instantly
+            document.documentElement.setAttribute('data-theme', selectedTheme);
+            if (selectedTheme === 'dark' || selectedTheme === 'dracula') {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+
+            // Save to the browser cache
+            localStorage.setItem('vortex_theme', selectedTheme);
+
+            // Sync to Django database
+            const token = localStorage.getItem('vortex_token');
+            if (token) {
+                fetch('/api/theme/update/', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Token ${token}`
+                    },
+                    body: JSON.stringify({ theme: selectedTheme })
+                }).catch(err => console.error("Failed to sync theme to DB", err));
+            }
+        });
     </script>
 </body>
 </html>

@@ -6,6 +6,15 @@
         if (localStorage.getItem('vortex_token')) {
             window.location.href = "{% url 'workspace_page' %}";
         }
+        const savedTheme = localStorage.getItem('vortex_theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', savedTheme);
+        
+        // If using Tailwind's class-based dark mode:
+        if (savedTheme === 'dark') {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -60,6 +69,7 @@
                 if (response.ok) {
                     localStorage.setItem('vortex_token', data.token);
                     localStorage.setItem('vortex_user_id', data.user_id);
+                    localStorage.setItem('vortex_theme', data.theme);
                     window.location.href = '/workspace/'; 
                 } else {
                     errorMsg.classList.remove('hidden');
