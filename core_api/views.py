@@ -5,7 +5,8 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework import status, generics
-from rest_framework.permissions import AllowAny, IsAuthenticated,TokenAuthentication
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.authentication import TokenAuthentication
 from .models import Submission
 from .serializers import SubmissionSerializer
 from kafka import KafkaProducer
