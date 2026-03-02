@@ -132,7 +132,7 @@
         import { indentWithTab } from "@codemirror/commands";
         import { oneDark } from "@codemirror/theme-one-dark";
         
-        // 🟢 2. All 14 Language Imports
+        // 2. All 14 Language Imports
         import { StreamLanguage } from "@codemirror/language";
         import { completeFromList, snippetCompletion } from "@codemirror/autocomplete";
         import { python } from "@codemirror/lang-python";
@@ -230,7 +230,7 @@
                     changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]}
                 });
             } else {
-                // 🚨 UX UPGRADE: If they wrote custom code, ask before destroying it!
+                // UX UPGRADE: If they wrote custom code, ask before destroying it!
                 if (confirm(`You have unsaved code. Overwrite it with the default ${lang} template?`)) {
                     editorView.dispatch({
                         changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]}

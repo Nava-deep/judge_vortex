@@ -5,7 +5,7 @@ from docker_manager import run_code_in_sandbox
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ✅ Update this port to match your running Django server
+# Update this port to match your running Django server
 CORE_API_URL = "http://localhost:53562/api"
 
 def update_submission(submission_id, status, output, time_ms):
@@ -41,6 +41,6 @@ def grade_submission(submission_data):
     elif result['status'] == 'RUNTIME_ERROR':
         update_submission(sub_id, 'RUNTIME_ERROR', result['output'], result['time_ms'])
     else:
-        # ✅ Changed 'ACCEPTED' to 'SUCCESS' to match the frontend terminal color logic
+        # Changed 'ACCEPTED' to 'SUCCESS' to match the frontend terminal color logic
         update_submission(sub_id, 'SUCCESS', result['output'], result['time_ms'])
         logger.info(f"Submission {sub_id} finished successfully.")

@@ -27,13 +27,13 @@ def get_kafka_consumer():
                 group_id='judge_vortex_executor',
                 api_version=(0, 10, 1) 
             )
-            print("✅ Successfully connected to Kafka!")
+            print("Successfully connected to Kafka!")
             return consumer
         except NoBrokersAvailable:
-            print("⏳ Kafka brokers not available yet... retrying in 2 seconds")
+            print("Kafka brokers not available yet... retrying in 2 seconds")
             time.sleep(2)
         except Exception as e:
-            print(f"❌ Unexpected error connecting to Kafka: {e}")
+            print(f"Unexpected error connecting to Kafka: {e}")
             time.sleep(5)
 
 async def run_grade_task(submission_data):
@@ -44,26 +44,25 @@ async def run_grade_task(submission_data):
     async with gatekeeper:
         SUBMISSIONS_TOTAL.inc()
         sub_id = submission_data.get('submission_id', 'Unknown')
-        print(f"🚀 Processing ID: {sub_id} (Slot Acquired)")
+        print(f"Processing ID: {sub_id} (Slot Acquired)")
         
         try:
             # We run the synchronous grade_submission in a thread pool 
             # so it doesn't block other tasks from starting.
             await asyncio.to_thread(grade_submission, submission_data)
-            print(f"✅ Finished processing ID: {sub_id} (Slot Released)")
-        except Exception as e:
-            print(f"💥 Error processing submission {sub_id}: {e}")
+            print(f"Finished processing ID: {sub_id} (Slot Released)")
+        except Exception as e:pass
 
 async def start_worker():
     # 1. Start the Prometheus metrics server
     start_http_server(8001)
-    print("📈 Metrics exported at http://localhost:8001/metrics")
+    print("Metrics exported at http://localhost:8001/metrics")
     
     # 2. Get the consumer using our retry logic
     # Note: KafkaConsumer is synchronous, so we run it in a loop
     consumer = get_kafka_consumer()
     
-    print(f"🚀 Executor Sandbox running (Concurrency Limit: {MAX_CONCURRENT_EXECUTIONS})")
+    print(f"Executor Sandbox running (Concurrency Limit: {MAX_CONCURRENT_EXECUTIONS})")
     
     # 3. Main processing loop
     while True:
@@ -86,4 +85,4 @@ if __name__ == '__main__':
     try:
         asyncio.run(start_worker())
     except KeyboardInterrupt:
-        print("\n🛑 Executor shutting down...")
+        print("\nExecutor shutting down...")
