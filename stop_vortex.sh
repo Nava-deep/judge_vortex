@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "--------------------------------------------------------"
-echo "🛑 SHUTTING DOWN JUDGE VORTEX..."
+echo "SHUTTING DOWN JUDGE VORTEX..."
 echo "--------------------------------------------------------"
 
 # 1. KILL PROCESSES GRACEFULLY
@@ -18,7 +18,7 @@ if cd infrastructure; then
     docker compose -f docker-compose.monitor.yml -p vortex-monitor down
     cd ..
 else
-    echo "❌ ERROR: Could not find 'infrastructure' directory. Are you running this from the project root?"
+    echo "ERROR: Could not find 'infrastructure' directory. Are you running this from the project root?"
 fi
 
 # 3. DISK CLEANUP (Workspaces)
@@ -29,7 +29,7 @@ SPACE_AFTER=$(du -sh /tmp 2>/dev/null | cut -f1)
 echo "Saved Temp Space: $SPACE_BEFORE -> $SPACE_AFTER"
 
 # 4. IMAGE CLEANUP (Warmed Compilers)
-echo "🗑️ Deleting warmed compiler images to free up space..."
+echo "Deleting warmed compiler images to free up space..."
 WARM_TAGS=("vortex-csharp-warmed" "vortex-java-warmed" "vortex-rust-warmed" "vortex-scala-warmed")
 
 for TAG in "${WARM_TAGS[@]}"; do
@@ -41,5 +41,5 @@ for TAG in "${WARM_TAGS[@]}"; do
 done
 
 echo "--------------------------------------------------------"
-echo "💤 SHUTDOWN COMPLETE"
+echo "SHUTDOWN COMPLETE"
 echo "--------------------------------------------------------"
