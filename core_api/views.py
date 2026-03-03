@@ -162,6 +162,7 @@ def join_room_view(request):
 # ==========================================
 
 class SubmissionCreateView(generics.CreateAPIView):
+    """Accepts code and manual input, then pushes to Kafka with Room/Question context."""
     throttle_classes = [DynamicQueueThrottle]
     queryset = Submission.objects.all()
     serializer_class = SubmissionSerializer
@@ -171,13 +172,25 @@ class SubmissionCreateView(generics.CreateAPIView):
         user_custom_input = self.request.data.get('user_input', "")
         room_id = self.request.data.get('room_id')
         question_id = self.request.data.get('question_id')
-        
+        if room_id:
+            is_participant = RoomParticipant.objects.filter(
+                room_id=room_id, 
+                student=self.request.user
+            ).exists()
+            
+            if not is_participant:
+                raise serializers.ValidationError({
+                    "error": "Access Denied. You are not a registered participant of this exam room."
+                })
+
+        # Save the submission to the DB
         submission = serializer.save(
             user=self.request.user,
             room_id=room_id,
             question_id=question_id
         )
         
+        # 📨 Push to Kafka for Native Execution
         producer = KafkaProducer(
             bootstrap_servers=['localhost:9092'],
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
@@ -250,3 +263,20 @@ class RoomParticipantListView(generics.ListDestroyAPIView):
         room_id = self.kwargs['room_id']
         # Ensure only the teacher of the room can see/delete participants
         return RoomParticipant.objects.filter(room_id=room_id, room__teacher=self.request.user)
+
+# ==========================================
+# 6. TEACHER: VIEW ROOM SUBMISSIONS
+# ==========================================
+
+class RoomSubmissionsListView(generics.ListAPIView):
+    """Allows teachers to see all code submissions made within their room."""
+    serializer_class = SubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        room_id = self.kwargs['room_id']
+        # Security: Ensure the teacher requesting the list actually owns the room
+        return Submission.objects.filter(
+            room_id=room_id, 
+            room__teacher=self.request.user
+        ).order_by('-submitted_at')

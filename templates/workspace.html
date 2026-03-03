@@ -63,6 +63,10 @@
 <body class="bg-gray-50 text-gray-800 h-screen flex flex-col font-sans overflow-hidden">
 
     <nav class="bg-white border-b border-gray-200 p-3 flex justify-between items-center z-30 shrink-0 shadow-sm">
+        <button id="joinRoomBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition mr-2 flex items-center">
+            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
+            Join Exam
+        </button>
         <div class="flex items-center space-x-3">
             <h1 class="text-xl font-black text-blue-600 tracking-tight">Judge Vortex</h1>
             <span class="bg-blue-50 text-[10px] px-2 py-1 rounded text-blue-600 border border-blue-200 uppercase tracking-tighter font-bold">Student View</span>
@@ -116,7 +120,8 @@
         <div id="rightPanel" class="flex-1 min-w-[300px] flex flex-col bg-white">
             <div class="bg-gray-50 flex border-b border-gray-200 shrink-0 sticky top-0 z-20">
                 <button id="tab-console" class="flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none">Output</button>
-                <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent">History</button>
+                <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">History</button>
+                <button id="tab-exam" class="hidden flex-1 px-5 py-3 text-xs font-bold text-purple-600 hover:text-purple-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">Exam Qs</button>
             </div>
             
             <div class="flex-1 relative overflow-hidden">
@@ -127,10 +132,31 @@
                 <div id="historyPanel" class="absolute inset-0 overflow-y-auto hidden bg-white">
                     <div id="historyList" class="divide-y divide-gray-200 flex flex-col"></div>
                 </div>
+                <div id="examPanel" class="absolute inset-0 overflow-y-auto hidden bg-white p-6">
+                    <h2 id="examTitle" class="text-xl font-black text-gray-800 mb-4 border-b pb-2">Exam Mode Active</h2>
+                    <div id="examQuestionsList" class="space-y-6">
+                        <p class="text-gray-400 text-sm italic">Join a room to view your assigned questions.</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-
+    <div id="joinRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Join Exam Room</h2>
+            <form id="joinRoomForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Enter 6-Digit Room Code</label>
+                    <input type="text" id="roomCodeInput" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none uppercase font-mono text-center text-2xl tracking-[0.5em]" placeholder="XXXXXX" maxlength="6" required>
+                </div>
+                <div id="joinErrorMsg" class="text-red-600 text-sm hidden bg-red-50 p-2 rounded border border-red-200 text-center"></div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="document.getElementById('joinRoomModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 shadow-md">Join</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <script type="module">
         import { basicSetup } from "codemirror";
         import { EditorView, keymap } from "@codemirror/view";
@@ -283,7 +309,14 @@
             try {
                 await fetch('/api/submissions/submit/', {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-                    body: JSON.stringify({ code, language: lang, user_input: input, time_limit_ms: 60000 })
+                    body: JSON.stringify({ 
+                        code: code, 
+                        language: lang, 
+                        user_input: input, 
+                        time_limit_ms: 60000,
+                        room_id: activeExamRoomId,
+                        question_id: activeExamQuestionId
+                    })
                 });
             } catch (err) { terminalEl.innerHTML = `<div class="text-red-600">API Error: ${err.message}</div>`; }
         };
@@ -357,6 +390,94 @@
                 fetchHistory(); 
             }
         }
+
+        // ==========================================
+        // 🟢 EXAM ROOM LOGIC
+        // ==========================================
+        const tabExam = document.getElementById('tab-exam');
+        const examPanel = document.getElementById('examPanel');
+        let activeExamRoomId = null;
+        let activeExamQuestionId = null;
+
+        // Modal Toggles
+        document.getElementById('joinRoomBtn').onclick = () => {
+            document.getElementById('joinErrorMsg').classList.add('hidden');
+            document.getElementById('joinRoomModal').classList.remove('hidden');
+        };
+
+        // Handle Tab Clicks (Update your existing tab logic to include the Exam Tab)
+        tabExam.onclick = () => {
+            tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-purple-600 border-b-2 border-purple-600 uppercase tracking-widest bg-white focus:outline-none";
+            tabConsole.className = tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
+            examPanel.classList.remove('hidden');
+            terminalEl.classList.add('hidden');
+            historyPanel.classList.add('hidden');
+        };
+
+        // Handle Join Submission
+        document.getElementById('joinRoomForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const code = document.getElementById('roomCodeInput').value.toUpperCase();
+            const errorMsg = document.getElementById('joinErrorMsg');
+
+            try {
+                const res = await fetch('/api/rooms/join/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                    body: JSON.stringify({ room_code: code })
+                });
+                const data = await res.json();
+
+                if (res.ok) {
+                    document.getElementById('joinRoomModal').classList.add('hidden');
+                    tabExam.classList.remove('hidden'); // Un-hide the tab
+                    
+                    // Populate the questions
+                    document.getElementById('examTitle').innerText = `Exam: ${data.room_title}`;
+                    const qList = document.getElementById('examQuestionsList');
+                    qList.innerHTML = '';
+
+                    data.assigned_questions.forEach((q, index) => {
+                        qList.innerHTML += `
+                            <div class="border border-gray-200 p-5 rounded-lg bg-gray-50 shadow-sm relative">
+                                <span class="absolute top-4 right-4 bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-1 rounded uppercase">Q${index + 1}</span>
+                                <h3 class="font-bold text-lg text-blue-600 mb-2 pr-8">${q.title}</h3>
+                                <p class="text-sm text-gray-700 font-mono whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 mb-3">${q.description}</p>
+                                <button onclick="window.setActiveQuestion(${q.id}, ${q.room}, this)" class="bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center border border-blue-200">
+                                    Lock In & Solve This Question
+                                </button>
+                            </div>
+                        `;
+                    });
+                    
+                    tabExam.click(); // Auto-switch to the exam tab
+                    alert(`Success! You have entered the exam.`);
+                } else {
+                    errorMsg.innerText = data.error || "Failed to join room.";
+                    errorMsg.classList.remove('hidden');
+                }
+            } catch (err) {
+                errorMsg.innerText = "Network Error.";
+                errorMsg.classList.remove('hidden');
+            }
+        });
+
+        // Function to lock in which question the student is currently solving
+        window.setActiveQuestion = (qId, roomId, btnElement) => {
+            activeExamQuestionId = qId;
+            activeExamRoomId = roomId;
+            
+            // UI Feedback: Reset all buttons, highlight the active one
+            document.querySelectorAll('#examQuestionsList button').forEach(b => {
+                b.innerText = "Lock In & Solve This Question";
+                b.className = "bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center border border-blue-200";
+            });
+            
+            btnElement.innerText = "Currently Solving...";
+            btnElement.className = "bg-green-600 text-white text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-md shadow-green-600/20";
+            
+            alert(`Your code executions will now be submitted against this question!`);
+        };
     </script>
 </body>
 </html>
