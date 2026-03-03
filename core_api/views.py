@@ -6,14 +6,17 @@ from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework import status, generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from .models import Submission
-from .serializers import SubmissionSerializer
-from kafka import KafkaProducer
 from rest_framework.views import APIView
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from .throttles import DynamicQueueThrottle
+from kafka import KafkaProducer
 import logging
+
+# 🟢 IMPORT THE NEW MODELS
+from .models import Submission, UserProfile, ExamRoom, ExamQuestion
+from .serializers import SubmissionSerializer
+from .throttles import DynamicQueueThrottle
+
 logger = logging.getLogger(__name__)
 
 # --- Authentication Endpoints ---
@@ -23,6 +26,8 @@ logger = logging.getLogger(__name__)
 def register_view(request):
     username = request.data.get('username')
     password = request.data.get('password')
+    # 🟢 Feature 4: Catch the teacher checkbox (Defaults to Student if missing)
+    is_teacher = request.data.get('is_teacher', False)
 
     if not username or not password:
         return Response({'error': 'Username and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
@@ -30,11 +35,21 @@ def register_view(request):
     if User.objects.filter(username=username).exists():
         return Response({'error': 'Username is already taken.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Create the user and generate their auth token
+    # 1. Create the User account
     user = User.objects.create_user(username=username, password=password)
+    
+    # 2. 🟢 Create the Profile and lock in their Role
+    UserProfile.objects.create(user=user, is_teacher=is_teacher)
+    
+    # 3. Generate Auth Token
     token, _ = Token.objects.get_or_create(user=user)
     
-    return Response({'token': token.key, 'user_id': user.id, 'message': 'Account created successfully'}, status=status.HTTP_201_CREATED)
+    return Response({
+        'token': token.key, 
+        'user_id': user.id,
+        'is_teacher': is_teacher, # 🟢 Tell frontend where to route them
+        'message': 'Account created successfully'
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
@@ -47,7 +62,16 @@ def login_view(request):
     
     if user is not None:
         token, _ = Token.objects.get_or_create(user=user)
-        return Response({'token': token.key, 'user_id': user.id, 'message': 'Login successful'}, status=status.HTTP_200_OK)
+        
+        # 🟢 Safely check their role so the frontend knows if they are a Teacher or Student
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        
+        return Response({
+            'token': token.key, 
+            'user_id': user.id, 
+            'is_teacher': profile.is_teacher, # 🟢 Crucial for UI routing
+            'message': 'Login successful'
+        }, status=status.HTTP_200_OK)
         
     return Response({'error': 'Invalid Credentials'}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -69,8 +93,16 @@ class SubmissionCreateView(generics.CreateAPIView):
     def perform_create(self, serializer):
         user_custom_input = self.request.data.get('user_input', "")
         
-        # Save the submission to the DB first
-        submission = serializer.save(user=self.request.user)
+        # 🟢 Feature 2: Catch Room and Question IDs if this is an Exam submission
+        room_id = self.request.data.get('room_id')
+        question_id = self.request.data.get('question_id')
+        
+        # Save the submission to the DB linked to the user (and room/question if present)
+        submission = serializer.save(
+            user=self.request.user,
+            room_id=room_id,
+            question_id=question_id
+        )
         
         # Connect to Kafka
         producer = KafkaProducer(
@@ -84,9 +116,7 @@ class SubmissionCreateView(generics.CreateAPIView):
             'code': submission.code,
             'language': submission.language,
             'user_input': user_custom_input,
-            
-            # We take it from the request, or default to 10000ms (10 seconds).
-            'time_limit_ms': self.request.data['time_limit_ms'], 
+            'time_limit_ms': self.request.data.get('time_limit_ms', 10000), 
         }
         
         # Send it to the queue!
@@ -96,7 +126,6 @@ class SubmissionCreateView(generics.CreateAPIView):
 
 class SubmissionUpdateView(APIView):
     """Endpoint for the Executor to update submission results."""
-    # In production, you'd restrict this to internal service IPs only
     permission_classes = [] 
 
     def patch(self, request, pk):
@@ -125,10 +154,8 @@ class SubmissionUpdateView(APIView):
                     }
                 )
             except Exception as ws_error:
-                # If Redis is down, log the error but do NOT crash the HTTP response
                 logger.error(f"WebSocket Broadcast Failed for Sub {pk}: {ws_error}")
 
-            # Explicitly return HTTP 200 OK to the Executor
             return Response({"message": "Updated successfully"}, status=status.HTTP_200_OK)
 
         except Submission.DoesNotExist:
@@ -139,7 +166,6 @@ class SubmissionListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Fetch only the logged-in user's history, newest first
         return Submission.objects.filter(user=self.request.user).order_by('-submitted_at')
 
 class SubmissionDeleteView(generics.DestroyAPIView):
@@ -147,5 +173,4 @@ class SubmissionDeleteView(generics.DestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Security: Only allow the logged-in user to find and delete their own records
         return Submission.objects.filter(user=self.request.user)
