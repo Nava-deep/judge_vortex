@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Judge Vortex | Teacher Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -10,7 +10,6 @@
         if (!localStorage.getItem('vortex_token')) {
             window.location.href = "/login/";
         } else if (localStorage.getItem('vortex_is_teacher') !== 'true') {
-            // Kick students back to the workspace!
             window.location.href = "/workspace/";
         }
     </script>
@@ -29,109 +28,165 @@
         
         <div class="w-1/3 max-w-sm bg-white border-r border-gray-200 flex flex-col">
             <div class="p-5 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
-                <h2 class="font-bold text-gray-700">My Exam Rooms</h2>
-                <button onclick="document.getElementById('createRoomModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded-lg font-bold shadow-sm transition">
+                <h2 class="font-bold text-gray-700 uppercase tracking-widest text-xs">My Exam Rooms</h2>
+                <button onclick="document.getElementById('createRoomModal').classList.remove('hidden')" class="bg-blue-600 hover:bg-blue-700 text-white text-[10px] px-3 py-1.5 rounded-lg font-black shadow-sm transition uppercase">
                     + New Room
                 </button>
             </div>
             
-            <div id="roomList" class="flex-1 overflow-y-auto divide-y divide-gray-100">
+            <div id="roomList" class="flex-1 overflow-y-auto divide-y divide-gray-100 font-medium">
                 <div class="p-8 text-center text-sm text-gray-400 italic">Loading rooms...</div>
             </div>
         </div>
 
-        <div id="roomDetailsPanel" class="flex-1 bg-gray-50 flex flex-col hidden">
-            <div class="p-8 bg-white border-b border-gray-200">
+        <div id="roomDetailsPanel" class="flex-1 bg-gray-50 flex flex-col hidden overflow-hidden">
+            <div class="p-8 bg-white border-b border-gray-200 shrink-0">
                 <div class="flex justify-between items-start">
                     <div>
                         <h2 id="roomTitleDisplay" class="text-3xl font-black text-gray-800 mb-2">Room Title</h2>
+                        
+                        <div class="flex space-x-6 mt-4 mb-4 p-4 bg-gray-50 rounded-xl border border-gray-100">
+                            <div class="text-center border-r border-gray-200 pr-6">
+                                <p class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Joined Students</p>
+                                <p id="studentCount" class="text-2xl font-black text-blue-600">0</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Questions in Pool</p>
+                                <p id="questionPoolCount" class="text-2xl font-black text-gray-700">0</p>
+                            </div>
+                        </div>
+
                         <div class="flex space-x-4 text-sm">
                             <span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-md border border-blue-200 font-mono font-bold">Code: <span id="roomCodeDisplay">XXXXXX</span></span>
                             <span class="text-gray-500 flex items-center">
-                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                Deadline: <span id="roomDeadlineDisplay">...</span>
+                                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Join Deadline: <span id="roomDeadlineDisplay" class="font-bold">...</span>
                             </span>
                         </div>
                     </div>
                     <button onclick="document.getElementById('addQuestionModal').classList.remove('hidden')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition">
-                        + Add Question
+                        + Add Question to Pool
                     </button>
                 </div>
             </div>
 
-            <div class="p-8 flex-1 overflow-y-auto">
-                <h3 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">Question Pool</h3>
-                <div id="questionList" class="space-y-4">
-                    <div class="text-gray-400 text-sm italic">No questions added yet.</div>
+            <div class="p-8 flex-1 overflow-y-auto space-y-12">
+                
+                <section>
+                    <h3 class="text-lg font-black text-gray-700 mb-4 border-b pb-2 uppercase tracking-tight">Question Pool</h3>
+                    <div id="questionList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="text-gray-400 text-sm italic py-4">No questions added yet.</div>
+                    </div>
+                </section>
+
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
+                    <section class="xl:col-span-1">
+                        <h3 class="text-lg font-black text-gray-700 mb-4 border-b pb-2 uppercase tracking-tight">Enrolled Students</h3>
+                        <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden h-96 overflow-y-auto">
+                            <table class="min-w-full text-sm text-left">
+                                <thead class="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                                    <tr>
+                                        <th class="px-4 py-3 font-black text-gray-500 uppercase tracking-widest text-[10px]">Student Name</th>
+                                        <th class="px-4 py-3 font-black text-gray-500 uppercase tracking-widest text-[10px] text-right">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="participantsTableBody" class="divide-y divide-gray-100">
+                                    <tr>
+                                        <td colspan="2" class="px-4 py-6 text-center text-gray-400 italic">No students joined yet.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="xl:col-span-2">
+                        <h3 class="text-lg font-black text-gray-700 mb-4 border-b pb-2 uppercase tracking-tight">Student Progress Leaderboard</h3>
+                        <div class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden h-96 overflow-y-auto">
+                            <table class="min-w-full text-sm text-left">
+                                <thead class="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
+                                    <tr>
+                                        <th class="px-6 py-4 font-black text-gray-500 uppercase tracking-widest text-[10px]">Student Name</th>
+                                        <th class="px-6 py-4 font-black text-gray-500 uppercase tracking-widest text-[10px]">Questions Solved</th>
+                                        <th class="px-6 py-4 font-black text-gray-500 uppercase tracking-widest text-[10px]">Total Score</th>
+                                        <th class="px-6 py-4 font-black text-gray-500 uppercase tracking-widest text-[10px]">Latest Activity</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="submissionTableBody" class="divide-y divide-gray-100">
+                                    <tr>
+                                        <td colspan="4" class="px-6 py-10 text-center text-gray-400 italic">No activity to display.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
                 </div>
             </div>
         </div>
         
         <div id="emptyStatePanel" class="flex-1 bg-gray-50 flex items-center justify-center">
             <div class="text-center text-gray-400">
-                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
-                <p class="text-lg font-medium">Select a room to manage it</p>
-                <p class="text-sm">Or create a new one from the sidebar.</p>
+                <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                <p class="text-lg font-medium text-gray-500">Select a room from the left</p>
+                <p class="text-sm">Manage questions, students, and live grading here.</p>
             </div>
         </div>
     </div>
 
-    <div id="createRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
-        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800">Create Exam Room</h2>
+    <div id="createRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-100">
+            <h2 class="text-2xl font-black mb-6 text-gray-800 tracking-tight">Create Exam Room</h2>
             <form id="createRoomForm" class="space-y-4">
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Room Title</label>
-                    <input type="text" id="roomTitle" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g., Midterm Algorithms" required>
+                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">Room Title</label>
+                    <input type="text" id="roomTitle" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
                 </div>
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Join Deadline</label>
-                    <input type="datetime-local" id="roomDeadline" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" required>
+                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">Join Deadline</label>
+                    <input type="datetime-local" id="roomDeadline" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
                 </div>
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Questions Per Student</label>
-                    <input type="number" id="roomQs" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" min="1" value="3" required>
-                    <p class="text-xs text-gray-500 mt-1">Students will be randomly assigned this many questions from the pool.</p>
+                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">Questions To Assign</label>
+                    <input type="number" id="roomQs" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" min="1" value="3" required>
                 </div>
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="document.getElementById('createRoomModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg hover:bg-blue-700 shadow-md">Create Room</button>
+                <div class="flex justify-end space-x-3 mt-8">
+                    <button type="button" onclick="document.getElementById('createRoomModal').classList.add('hidden')" class="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-xl">Cancel</button>
+                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 shadow-lg">Create Room</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <div id="addQuestionModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50">
-        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl">
-            <h2 class="text-2xl font-bold mb-6 text-gray-800">Add Question to Pool</h2>
+    <div id="addQuestionModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-100">
+            <h2 class="text-2xl font-black mb-6 text-gray-800 tracking-tight">Add Question</h2>
             <form id="addQuestionForm" class="space-y-4">
                 <div class="flex space-x-4">
                     <div class="flex-[3]">
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Question Title</label>
-                        <input type="text" id="qTitle" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g., Two Sum" required>
+                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">Title</label>
+                        <input type="text" id="qTitle" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
                     </div>
                     <div class="flex-1">
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Total Marks</label>
-                        <input type="number" id="qMarks" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value="10" min="1" required>
+                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">Marks</label>
+                        <input type="number" id="qMarks" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value="10" required>
                     </div>
                 </div>
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Description / Prompt</label>
-                    <textarea id="qDesc" rows="3" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" placeholder="Write a function that..." required></textarea>
+                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">Description</label>
+                    <textarea id="qDesc" rows="4" class="w-full p-3 border border-gray-300 rounded-xl font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500" required></textarea>
                 </div>
                 <div class="flex space-x-4">
                     <div class="flex-1">
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Hidden Test Case Input</label>
-                        <textarea id="qInput" rows="3" class="w-full p-2 border border-gray-300 rounded-lg font-mono text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">Stdin</label>
+                        <textarea id="qInput" rows="3" class="w-full p-3 border border-gray-300 rounded-xl font-mono text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></textarea>
                     </div>
                     <div class="flex-1">
-                        <label class="block text-sm font-bold text-gray-700 mb-1">Expected Exact Output</label>
-                        <textarea id="qOutput" rows="3" class="w-full p-2 border border-gray-300 rounded-lg font-mono text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500" required></textarea>
+                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">Expected Output</label>
+                        <textarea id="qOutput" rows="3" class="w-full p-3 border border-gray-300 rounded-xl font-mono text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500" required></textarea>
                     </div>
                 </div>
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="document.getElementById('addQuestionModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 shadow-md">Save Question</button>
+                <div class="flex justify-end space-x-3 mt-8">
+                    <button type="button" onclick="document.getElementById('addQuestionModal').classList.add('hidden')" class="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-xl">Cancel</button>
+                    <button type="submit" class="px-6 py-2 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 shadow-lg">Save Question</button>
                 </div>
             </form>
         </div>
@@ -143,118 +198,303 @@
 
         document.getElementById('logoutBtn').onclick = () => { localStorage.clear(); window.location.href = '/login/'; };
 
-        // 1. Fetch and Display Rooms
-        async function fetchRooms() {
-            const res = await fetch('/api/rooms/', {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-            const rooms = await res.json();
-            const roomList = document.getElementById('roomList');
-            roomList.innerHTML = '';
-
-            rooms.forEach(room => {
-                const div = document.createElement('div');
-                div.className = "p-4 hover:bg-blue-50 cursor-pointer transition border-l-4 border-transparent hover:border-blue-500";
-                div.onclick = () => selectRoom(room);
-                div.innerHTML = `
-                    <div class="font-bold text-gray-800">${room.title}</div>
-                    <div class="text-xs text-gray-500 font-mono">Code: ${room.room_code} | ${room.total_questions} Qs</div>
-                `;
-                roomList.appendChild(div);
-            });
+        function escapeHtml(unsafe) {
+            return String(unsafe === undefined || unsafe === null ? '' : unsafe)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
         }
 
-        // 2. Select and Load Room Details
+        // --- ROOM MANAGEMENT ---
+        async function fetchRooms() {
+            try {
+                const res = await fetch('/api/rooms/', { headers: { 'Authorization': `Token ${token}` } });
+                if (!res.ok) return;
+                const rooms = await res.json();
+                const roomList = document.getElementById('roomList');
+                roomList.innerHTML = '';
+
+                rooms.forEach(room => {
+                    const div = document.createElement('div');
+                    div.className = "p-4 hover:bg-blue-50 cursor-pointer transition border-l-4 border-transparent hover:border-blue-600 group flex justify-between items-center";
+                    div.onclick = () => selectRoom(room);
+                    div.innerHTML = `
+                        <div class="flex-1">
+                            <div class="font-black text-gray-800 group-hover:text-blue-700 transition">${escapeHtml(room.title)}</div>
+                            <div class="text-[10px] text-gray-500 font-mono mt-1">CODE: ${escapeHtml(room.room_code)} | ${escapeHtml(room.total_questions || 0)} Questions</div>
+                        </div>
+                        <button onclick="event.stopPropagation(); deleteRoom(${room.id})" class="text-gray-300 hover:text-red-500 transition ml-2 opacity-0 group-hover:opacity-100" title="Delete Room">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                        </button>`;
+                    roomList.appendChild(div);
+                });
+            } catch (err) { console.error(err); }
+        }
+
+        async function deleteRoom(roomId) {
+            if (!confirm("Are you sure you want to delete this room? All submissions and student data will be lost permanently.")) return;
+            try {
+                const res = await fetch(`/api/rooms/${roomId}/`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                if (res.ok) {
+                    if (currentRoomId === roomId) {
+                        currentRoomId = null;
+                        document.getElementById('roomDetailsPanel').classList.add('hidden');
+                        document.getElementById('emptyStatePanel').classList.remove('hidden');
+                    }
+                    fetchRooms();
+                } else {
+                    alert("Failed to delete room.");
+                }
+            } catch (err) { console.error(err); }
+        }
+
         async function selectRoom(room) {
             currentRoomId = room.id;
             document.getElementById('emptyStatePanel').classList.add('hidden');
             document.getElementById('roomDetailsPanel').classList.remove('hidden');
-            
             document.getElementById('roomTitleDisplay').innerText = room.title;
             document.getElementById('roomCodeDisplay').innerText = room.room_code;
             document.getElementById('roomDeadlineDisplay').innerText = new Date(room.join_deadline).toLocaleString();
-
+            
             fetchQuestions(room.id);
+            fetchParticipants(room.id);
+            fetchSubmissions(room.id); 
         }
 
-        // 3. Fetch Questions for the current room
-        async function fetchQuestions(roomId) {
-            const res = await fetch(`/api/rooms/${roomId}/questions/`, {
-                headers: { 'Authorization': `Token ${token}` }
-            });
-            const questions = await res.json();
-            const qList = document.getElementById('questionList');
-            qList.innerHTML = '';
-
-            if (questions.length === 0) {
-                qList.innerHTML = '<div class="text-gray-400 text-sm italic">No questions in this pool.</div>';
-                return;
-            }
-
-            questions.forEach(q => {
-                qList.innerHTML += `
-                    <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm relative">
-                        <span class="absolute top-4 right-4 bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded border border-blue-200">
-                            ${q.total_marks || 0} PTS
-                        </span>
-                        <h4 class="font-bold text-blue-600">${q.title}</h4>
-                        <p class="text-sm text-gray-600 mt-1">${q.description.substring(0, 100)}...</p>
-                        <div class="mt-2 text-[10px] text-gray-400 font-mono">Expected: ${q.expected_output}</div>
-                    </div>
-                `;
-            });
-        }
-
-        // 4. Create Room Form Submission
         document.getElementById('createRoomForm').onsubmit = async (e) => {
             e.preventDefault();
-            const payload = {
-                title: document.getElementById('roomTitle').value,
-                join_deadline: document.getElementById('roomDeadline').value,
-                questions_to_assign: document.getElementById('roomQs').value
-            };
-
             const res = await fetch('/api/rooms/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ 
+                    title: document.getElementById('roomTitle').value, 
+                    join_deadline: document.getElementById('roomDeadline').value, 
+                    questions_to_assign: document.getElementById('roomQs').value 
+                })
             });
-
-            if (res.ok) {
-                document.getElementById('createRoomModal').classList.add('hidden');
-                fetchRooms();
+            if (res.ok) { 
+                document.getElementById('createRoomModal').classList.add('hidden'); 
+                fetchRooms(); 
+                e.target.reset(); 
             }
         };
 
-        // 5. Add Question Form Submission
+        // --- QUESTION POOL MANAGEMENT ---
+        async function fetchQuestions(roomId) {
+            try {
+                const res = await fetch(`/api/rooms/${roomId}/questions/`, { headers: { 'Authorization': `Token ${token}` } });
+                if (!res.ok) return;
+                const questions = await res.json();
+                const qList = document.getElementById('questionList');
+                qList.innerHTML = '';
+                document.getElementById('questionPoolCount').innerText = questions.length || 0;
+                
+                if (!questions || questions.length === 0) {
+                    qList.innerHTML = '<div class="col-span-2 text-gray-400 text-sm italic py-4">No questions added to this room yet.</div>';
+                    return;
+                }
+                questions.forEach(q => {
+                    qList.innerHTML += `
+                    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative hover:shadow-md transition">
+                        <div class="absolute top-4 right-4 flex items-center space-x-2">
+                            <span class="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-1 rounded border border-blue-200">${escapeHtml(q.total_marks || 0)} PTS</span>
+                            <button onclick="event.stopPropagation(); removeQuestion(${q.id})" class="text-gray-300 hover:text-red-500 transition" title="Remove Question">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                        <h4 class="font-black text-gray-800 uppercase text-xs tracking-tight">${escapeHtml(q.title)}</h4>
+                        <p class="text-xs text-gray-500 mt-2 line-clamp-2">${escapeHtml(q.description)}</p>
+                        <div class="mt-4 pt-4 border-t border-gray-50 flex flex-col space-y-1">
+                            <span class="text-[9px] font-black text-gray-400 uppercase">Expected Output</span>
+                            <code class="text-[10px] text-blue-600 font-mono bg-blue-50 p-1 rounded block truncate">${escapeHtml(q.expected_output)}</code>
+                        </div>
+                    </div>`;
+                });
+            } catch (err) { console.error(err); }
+        }
+
         document.getElementById('addQuestionForm').onsubmit = async (e) => {
             e.preventDefault();
-            const payload = {
-                title: document.getElementById('qTitle').value,
-                description: document.getElementById('qDesc').value,
-                testcase_input: document.getElementById('qInput').value,
-                expected_output: document.getElementById('qOutput').value,
-                total_marks: parseInt(document.getElementById('qMarks').value) // 🟢 NEW: Sent to API
-            };
-
             const res = await fetch(`/api/rooms/${currentRoomId}/questions/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({ 
+                    title: document.getElementById('qTitle').value, 
+                    description: document.getElementById('qDesc').value, 
+                    testcase_input: document.getElementById('qInput').value, 
+                    expected_output: document.getElementById('qOutput').value, 
+                    total_marks: parseInt(document.getElementById('qMarks').value) 
+                })
             });
-
-            if (res.ok) {
-                document.getElementById('addQuestionModal').classList.add('hidden');
-                fetchQuestions(currentRoomId);
-                fetchRooms(); // Refresh sidebar count
+            if (res.ok) { 
+                document.getElementById('addQuestionModal').classList.add('hidden'); 
+                fetchQuestions(currentRoomId); 
+                fetchRooms(); 
+                e.target.reset(); 
             } else {
-                alert("Failed to save question. Check if marks are valid.");
+                alert("Submission failed. Ensure all fields are filled correctly.");
             }
         };
 
-        // Initial Load
-        fetchRooms();
+        async function removeQuestion(qId) {
+            if (!confirm("Remove this question?")) return;
+            const res = await fetch(`/api/rooms/${currentRoomId}/questions/${qId}/`, { method: 'DELETE', headers: { 'Authorization': `Token ${token}` } });
+            if (res.ok) { fetchQuestions(currentRoomId); fetchRooms(); }
+        }
 
+        // --- PARTICIPANT MANAGEMENT (WITH KICK FEATURE) ---
+        async function fetchParticipants(roomId) {
+            try {
+                const res = await fetch(`/api/rooms/${roomId}/participants/`, { headers: { 'Authorization': `Token ${token}` } });
+                if (!res.ok) return;
+                const students = await res.json();
+                
+                document.getElementById('studentCount').innerText = students.length;
+                
+                const tbody = document.getElementById('participantsTableBody');
+                tbody.innerHTML = '';
+                
+                if (students.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="2" class="px-4 py-6 text-center text-gray-400 italic">No students joined yet.</td></tr>';
+                    return;
+                }
+
+                students.forEach(student => {
+                    const studentId = student.id || student.user_id || student.student_id;
+                    const studentName = student.username || student.student_name || 'Unknown';
+                    
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-gray-50 transition border-b border-gray-50">
+                            <td class="px-4 py-3 font-bold text-gray-800">${escapeHtml(studentName)}</td>
+                            <td class="px-4 py-3 text-right">
+                                <button onclick="kickStudent(${studentId})" class="text-xs bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 px-3 py-1 rounded font-bold transition">
+                                    KICK
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+            } catch (err) { console.error('fetchParticipants error', err); }
+        }
+
+        async function kickStudent(studentId) {
+            if (!studentId) {
+                alert("Cannot kick student: ID missing from API response.");
+                return;
+            }
+            if (!confirm("Are you sure you want to kick this student from the room? Their submissions will be removed.")) return;
+            
+            try {
+                const res = await fetch(`/api/rooms/${currentRoomId}/participants/${studentId}/`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                
+                if (res.ok) {
+                    fetchParticipants(currentRoomId);
+                    fetchSubmissions(currentRoomId);
+                } else {
+                    alert("Failed to kick student. Check your backend endpoints.");
+                }
+            } catch (err) {
+                console.error("Kick student error", err);
+            }
+        }
+
+        // --- 🟢 NEW: AGGREGATED SUBMISSION LEADERBOARD ---
+        async function fetchSubmissions(roomId) {
+            try {
+                const res = await fetch(`/api/rooms/${roomId}/submissions/`, {
+                    headers: { 'Authorization': `Token ${token}` }
+                });
+                if (!res.ok) return;
+
+                const submissions = await res.json();
+                const tbody = document.getElementById('submissionTableBody');
+                tbody.innerHTML = '';
+
+                if (!submissions || submissions.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-10 text-center text-gray-400 italic">No activity to display.</td></tr>';
+                    return;
+                }
+
+                // Object to store aggregated data per student
+                const studentStats = {};
+
+                submissions.forEach(sub => {
+                    const name = sub.student_name || sub.username || (sub.user && sub.user.username) || 'Unknown Student';
+                    
+                    // Initialize the student if not already in the object
+                    if (!studentStats[name]) {
+                        studentStats[name] = {
+                            name: name,
+                            questionsSolved: 0,
+                            totalScore: 0,
+                            latestTime: 0,
+                            latestStatus: 'PENDING'
+                        };
+                    }
+
+                    const statusRaw = (sub.status || 'PENDING').toString().toUpperCase();
+                    
+                    // If this submission passed, count it towards their solved total and add the score
+                    if (statusRaw === 'PASSED' || statusRaw === 'ACCEPTED') {
+                        studentStats[name].questionsSolved += 1;
+                        studentStats[name].totalScore += (sub.total_score || sub.score || sub.marks || 0);
+                    }
+
+                    // Keep track of their most recent activity time and status
+                    const subTime = new Date(sub.submitted_at || sub.created_at || 0).getTime();
+                    if (subTime > studentStats[name].latestTime) {
+                        studentStats[name].latestTime = subTime;
+                        studentStats[name].latestStatus = statusRaw;
+                    }
+                });
+
+                // Convert object to array and sort by most solved, then highest score
+                const leaderboard = Object.values(studentStats).sort((a, b) => {
+                    if (b.questionsSolved !== a.questionsSolved) return b.questionsSolved - a.questionsSolved;
+                    return b.totalScore - a.totalScore;
+                });
+
+                // Render the aggregated rows
+                leaderboard.forEach(student => {
+                    let colorClass = 'text-yellow-600';
+                    if (student.latestStatus === 'PASSED' || student.latestStatus === 'ACCEPTED') colorClass = 'text-green-600';
+                    else if (student.latestStatus.includes('WRONG') || student.latestStatus.includes('FAIL') || student.latestStatus === 'WA') colorClass = 'text-red-600';
+
+                    const timeString = student.latestTime > 0 ? new Date(student.latestTime).toLocaleString() : '-';
+
+                    tbody.innerHTML += `
+                        <tr class="hover:bg-gray-50 transition border-b border-gray-50">
+                            <td class="px-6 py-4 font-bold text-gray-800">${escapeHtml(student.name)}</td>
+                            <td class="px-6 py-4 font-black text-blue-600 text-base">${student.questionsSolved}</td>
+                            <td class="px-6 py-4 font-black text-purple-600">${escapeHtml(student.totalScore)}</td>
+                            <td class="px-6 py-4 font-black ${colorClass} text-[10px] uppercase tracking-widest">
+                                ${escapeHtml(student.latestStatus)} <br>
+                                <span class="text-gray-400 font-mono text-[9px] font-normal lowercase">${timeString}</span>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+            } catch (err) { console.error("Submission fetch error:", err); }
+        }
+
+        // --- INITIALIZATION & POLLING ---
+        fetchRooms();
+        setInterval(() => { 
+            if (currentRoomId) {
+                fetchSubmissions(currentRoomId); 
+                fetchParticipants(currentRoomId);
+            }
+        }, 5000);
     </script>
 </body>
 </html>

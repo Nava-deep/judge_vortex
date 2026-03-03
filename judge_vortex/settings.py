@@ -92,19 +92,17 @@ CACHES = {
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_THROTTLE_CLASSES': [
-        'core_api.throttles.DynamicQueueThrottle', # Points to your new file
+        'core_api.throttles.DynamicQueueThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'user': '10/minute',     # 10 runs per minute for logged-in users
-        'burst': '1/second',     # Prevents double-clicking the Run button
+        'user': '10/minute',
+        'burst': '1/second',
     },
-    'DEFAULT_CACHE_ERRORS': True
 }
 
 WSGI_APPLICATION = 'judge_vortex.wsgi.application'

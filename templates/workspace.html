@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Judge Vortex | Student Workspace</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // 🛡️ THE BOUNCER: Security & Role Routing
+        // Bouncer: require a token and route teachers away
         if (!localStorage.getItem('vortex_token')) {
             window.location.href = "/login/";
         } else if (localStorage.getItem('vortex_is_teacher') === 'true') {
             window.location.href = "/teacher-dashboard/";
         }
     </script>
-    
+
     <script type="importmap">
     {
       "imports": {
@@ -40,535 +40,999 @@
     </script>
 
     <style>
-        /* Light Theme Custom Scrollbars */
+        /* Scrollbars */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f9fafb; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-        /* Resizer Gutters */
-        .gutter-h { cursor: col-resize; width: 6px; background: transparent; transition: background 0.2s; z-index: 50; }
+        /* Gutters */
+        .gutter-h { cursor: col-resize; width: 6px; background: transparent; transition: background .2s; z-index: 50; }
         .gutter-h:hover, .gutter-h.active { background: #3b82f6; }
-        
-        .gutter-v { cursor: row-resize; height: 6px; background: transparent; transition: background 0.2s; z-index: 50; }
+        .gutter-v { cursor: row-resize; height: 6px; background: transparent; transition: background .2s; z-index: 50; }
         .gutter-v:hover, .gutter-v.active { background: #3b82f6; }
         .resizing { user-select: none; pointer-events: none; }
 
-        /* CodeMirror Specific Styling (Light Theme) */
-        .cm-editor { height: 100%; width: 100%; outline: none !important; font-size: 15px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background-color: #ffffff; }
+        /* CodeMirror */
+        .cm-editor { height: 100%; width: 100%; outline: none !important; font-size: 15px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background-color: #fff; }
         .cm-scroller { overflow: auto; }
         .cm-focused { outline: none !important; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800 h-screen flex flex-col font-sans overflow-hidden">
 
-    <nav class="bg-white border-b border-gray-200 p-3 flex justify-between items-center z-30 shrink-0 shadow-sm">
-        <button id="joinRoomBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition mr-2 flex items-center">
-            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path></svg>
-            Join Exam
-        </button>
+<nav class="bg-white border-b border-gray-200 p-3 flex justify-between items-center z-30 shrink-0 shadow-sm">
+    <button id="joinRoomBtn" type="button" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition mr-2 flex items-center">
+        <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+        Join Exam
+    </button>
+
+    <div class="flex items-center space-x-3">
+        <h1 class="text-xl font-black text-blue-600 tracking-tight">Judge Vortex</h1>
+        <span class="bg-blue-50 text-[10px] px-2 py-1 rounded text-blue-600 border border-blue-200 uppercase tracking-tighter font-bold">Student View</span>
+    </div>
+
+    <div class="flex items-center space-x-4">
+        <div id="examTimerDisplay" class="hidden font-mono font-bold text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200 text-sm shadow-sm animate-pulse">
+            00:00:00
+        </div>
+
+        <select id="language" class="bg-white text-gray-700 text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
+            <option value="python">Python 3.11</option>
+            <option value="cpp">C++ (GCC)</option>
+            <option value="c">C (GCC)</option>
+            <option value="java">Java 17</option>
+            <option value="javascript">JavaScript (Node 18)</option>
+            <option value="typescript">TypeScript (Node 18)</option>
+            <option value="ruby">Ruby 3.2</option>
+            <option value="go">Go 1.21</option>
+            <option value="rust">Rust 1.75</option>
+            <option value="php">PHP 8.2</option>
+            <option value="csharp">C# (.NET 8.0)</option>
+            <option value="swift">Swift (Latest)</option>
+            <option value="haskell">Haskell 9.4</option>
+            <option value="sql">SQL (SQLite)</option>
+        </select>
+
         <div class="flex items-center space-x-3">
-            <h1 class="text-xl font-black text-blue-600 tracking-tight">Judge Vortex</h1>
-            <span class="bg-blue-50 text-[10px] px-2 py-1 rounded text-blue-600 border border-blue-200 uppercase tracking-tighter font-bold">Student View</span>
-        </div>
-        
-        <div class="flex items-center space-x-4">
-            <select id="language" class="bg-white text-gray-700 text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
-                <option value="python">Python 3.11</option>
-                <option value="cpp">C++ (GCC)</option>
-                <option value="c">C (GCC)</option>
-                <option value="java">Java 17</option>
-                <option value="javascript">JavaScript (Node 18)</option>
-                <option value="typescript">TypeScript (Node 18)</option>
-                <option value="ruby">Ruby 3.2</option>
-                <option value="go">Go 1.21</option>
-                <option value="rust">Rust 1.75</option>
-                <option value="php">PHP 8.2</option>
-                <option value="csharp">C# (.NET 8.0)</option>
-                <option value="swift">Swift (Latest)</option>
-                <option value="haskell">Haskell 9.4</option>
-                <option value="sql">SQL (SQLite)</option>
-            </select>
-            
-            <button id="runBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-bold shadow-md transition flex items-center">
-                <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" fill-rule="evenodd"></path></svg>
-                Run Code
+            <button id="runBtn" type="button" class="bg-gray-800 hover:bg-black text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg">
+                <svg class="w-4 h-4 mr-2 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path d="M4.5 3.5v13l11-6.5-11-6.5z"/></svg>
+                Run Test
             </button>
-            <button id="logoutBtn" class="text-gray-500 hover:text-red-500 text-sm font-semibold transition px-2">Log Out</button>
-        </div>
-    </nav>
 
-    <div class="flex-1 flex overflow-hidden w-full">
-        
-        <div id="leftPanel" class="flex flex-col min-w-[200px]" style="width: 60%;">
-            
-            <div id="editorTop" class="flex-1 relative bg-white overflow-hidden border-r border-gray-200">
-                <div id="editorContainer" class="absolute inset-0"></div>
-            </div>
-
-            <div id="gutterV" class="gutter-v shrink-0 border-y border-gray-200 bg-gray-50"></div>
-
-            <div id="inputBottom" class="bg-gray-50 p-3 flex flex-col shrink-0 border-r border-gray-200" style="height: 180px;">
-                <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin)</label>
-                <textarea id="customInput" placeholder="Enter test case inputs here..." 
-                    class="flex-1 w-full bg-white border border-gray-300 rounded p-3 font-mono text-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 box-border resize-none transition shadow-sm"></textarea>
-            </div>
+            <button id="submitBtn" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg" style="display: none;">
+                Submit
+            </button>
         </div>
 
-        <div id="gutterH" class="gutter-h shrink-0 border-x border-gray-200 bg-gray-50"></div>
+        <button id="logoutBtn" type="button" class="text-gray-500 hover:text-red-500 text-sm font-semibold transition px-2">Log Out</button>
+    </div>
+</nav>
 
-        <div id="rightPanel" class="flex-1 min-w-[300px] flex flex-col bg-white">
-            <div class="bg-gray-50 flex border-b border-gray-200 shrink-0 sticky top-0 z-20">
-                <button id="tab-console" class="flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none">Output</button>
-                <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">History</button>
-                <button id="tab-exam" class="hidden flex-1 px-5 py-3 text-xs font-bold text-purple-600 hover:text-purple-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">Exam Qs</button>
+<div class="flex-1 flex overflow-hidden w-full">
+
+    <div id="leftPanel" class="flex flex-col min-w-[200px]" style="width: 60%;">
+        <div id="editorTop" class="flex-1 relative bg-white overflow-hidden border-r border-gray-200">
+            <div id="editorContainer" class="absolute inset-0"></div>
+        </div>
+
+        <div id="gutterV" class="gutter-v shrink-0 border-y border-gray-200 bg-gray-50"></div>
+
+        <div id="inputBottom" class="bg-gray-50 p-3 flex flex-col shrink-0 border-r border-gray-200" style="height: 180px;">
+            <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin) - For Run Test Only</label>
+            <textarea id="customInput" placeholder="Enter custom test cases here to check your code locally..." class="flex-1 w-full bg-white border border-gray-300 rounded p-3 font-mono text-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 box-border resize-none transition shadow-sm"></textarea>
+        </div>
+    </div>
+
+    <div id="gutterH" class="gutter-h shrink-0 border-x border-gray-200 bg-gray-50"></div>
+
+    <div id="rightPanel" class="flex-1 min-w-[300px] flex flex-col bg-white">
+        <div class="bg-gray-50 flex border-b border-gray-200 shrink-0 sticky top-0 z-20">
+            <button id="tab-console" class="flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none">Output</button>
+            <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">History</button>
+            <button id="tab-exam" class="hidden flex-1 px-5 py-3 text-xs font-bold text-purple-600 hover:text-purple-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">Exam Qs</button>
+        </div>
+
+        <div class="flex-1 relative overflow-hidden">
+            <div id="terminal" class="absolute inset-0 p-5 overflow-y-auto font-mono text-sm leading-relaxed block bg-white">
+                <div class="text-gray-400 italic">Ready. Awaiting execution...</div>
             </div>
-            
-            <div class="flex-1 relative overflow-hidden">
-                <div id="terminal" class="absolute inset-0 p-5 overflow-y-auto font-mono text-sm leading-relaxed block bg-white">
-                    <div class="text-gray-400 italic">Ready. Awaiting execution...</div>
-                </div>
 
-                <div id="historyPanel" class="absolute inset-0 overflow-y-auto hidden bg-white">
-                    <div id="historyList" class="divide-y divide-gray-200 flex flex-col"></div>
-                </div>
-                <div id="examPanel" class="absolute inset-0 overflow-y-auto hidden bg-white p-6">
-                    <h2 id="examTitle" class="text-xl font-black text-gray-800 mb-4 border-b pb-2">Exam Mode Active</h2>
-                    <div id="examQuestionsList" class="space-y-6">
+            <div id="historyPanel" class="absolute inset-0 overflow-y-auto hidden bg-white">
+                <div id="historyList" class="divide-y divide-gray-200 flex flex-col"></div>
+            </div>
+
+            <div id="examPanel" class="absolute inset-0 hidden bg-white flex flex-col">
+            <div class="p-6 border-b shrink-0 bg-gray-50">
+                <h2 id="examTitle" class="text-xl font-black text-gray-800">Exam Mode Active</h2>
+                <p class="text-sm text-gray-500 mt-1">Select a question, debug with "Run Test", and click "Submit" when confident.</p>
+            </div>
+
+            <div class="flex flex-1 overflow-hidden">
+                <div class="w-1/3 border-r overflow-y-auto p-4 bg-gray-50">
+                    <div id="examQuestionsList" class="space-y-4">
                         <p class="text-gray-400 text-sm italic">Join a room to view your assigned questions.</p>
                     </div>
                 </div>
+
+                <div id="examQuestionViewer" class="flex-1 overflow-y-auto p-8 bg-white">
+                    <p class="text-gray-400 italic text-center mt-10">Select a question from the left panel to view its details.</p>
+                </div>
             </div>
         </div>
-    </div>
-
-    <div id="antiCheatModal" class="fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center hidden z-[100] backdrop-blur-md">
-        <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md text-center border-4 border-red-500 transform scale-105 transition-transform">
-            <svg class="w-20 h-20 text-red-600 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-            <h2 class="text-3xl font-black text-gray-900 mb-2">TAB SWITCH DETECTED!</h2>
-            <p class="text-gray-600 font-medium mb-6">You have left the exam environment. Return immediately or your exam will be automatically locked.</p>
-            <div class="text-6xl font-black text-red-600 font-mono mb-4" id="cheatCountdownDisplay">10</div>
-            <p class="text-sm text-red-500 font-bold uppercase tracking-widest animate-pulse">Seconds Remaining</p>
-        </div>
-    </div>
-
-    <div id="disqualifiedModal" class="fixed inset-0 bg-gray-900 flex items-center justify-center hidden z-[110]">
-        <div class="text-center">
-            <h1 class="text-6xl font-black text-red-500 mb-4 tracking-tight">EXAM LOCKED</h1>
-            <p class="text-xl text-gray-400 max-w-lg mx-auto">You failed to return to the exam window in time. Your session has been terminated and your workspace is locked.</p>
-            <button onclick="window.location.href='/workspace/'" class="mt-8 px-6 py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-700 transition">Return to Practice Mode</button>
-        </div>
-    </div>
-
-    <div id="joinRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200">
-            <h2 class="text-2xl font-bold mb-4 text-gray-800">Join Exam Room</h2>
-            <form id="joinRoomForm" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Enter 6-Digit Room Code</label>
-                    <input type="text" id="roomCodeInput" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none uppercase font-mono text-center text-2xl tracking-[0.5em]" placeholder="XXXXXX" maxlength="6" required>
-                </div>
-                <div id="joinErrorMsg" class="text-red-600 text-sm hidden bg-red-50 p-2 rounded border border-red-200 text-center"></div>
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="document.getElementById('joinRoomModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 shadow-md">Join</button>
-                </div>
-            </form>
-        </div>
-    </div>
-    <script type="module">
-        import { basicSetup } from "codemirror";
-        import { EditorView, keymap } from "@codemirror/view";
-        import { EditorState, Compartment } from "@codemirror/state";
-        import { indentWithTab } from "@codemirror/commands";
         
-        import { StreamLanguage } from "@codemirror/language";
-        import { python } from "@codemirror/lang-python";
-        import { cpp } from "@codemirror/lang-cpp";
-        import { java } from "@codemirror/lang-java";
-        import { javascript } from "@codemirror/lang-javascript";
-        import { rust } from "@codemirror/lang-rust";
-        import { php } from "@codemirror/lang-php";
-        import { go } from "@codemirror/lang-go";
-        import { sql } from "@codemirror/lang-sql"; // 🟢 SQL added here
-        import { ruby } from "@codemirror/legacy-modes/mode/ruby";
-        import { swift } from "@codemirror/legacy-modes/mode/swift";
-        import { haskell } from "@codemirror/legacy-modes/mode/haskell";
-        import { csharp } from "@codemirror/legacy-modes/mode/clike";
+        </div>
+    </div>
+</div>
 
-        const token = localStorage.getItem('vortex_token');
-        const userId = localStorage.getItem('vortex_user_id');
+<div id="examCompletedModal" class="fixed inset-0 bg-green-900 bg-opacity-90 flex items-center justify-center hidden z-[110] backdrop-blur-md">
+    <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md text-center border-4 border-green-500">
+        <svg class="w-20 h-20 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+        <h2 class="text-3xl font-black text-gray-900 mb-2">Exam Completed!</h2>
+        <p class="text-gray-600 font-medium mb-6">You have successfully submitted all assigned questions. Your answers are locked in.</p>
+        <button onclick="window.safeExitRoom()" class="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow-lg">Exit to Practice Mode</button>
+    </div>
+</div>
 
-        document.getElementById('logoutBtn').onclick = () => { localStorage.clear(); window.location.href = '/login/'; };
+<div id="timeUpModal" class="fixed inset-0 bg-gray-900 flex items-center justify-center hidden z-[120]">
+    <div class="text-center">
+        <h1 class="text-6xl font-black text-red-500 mb-4 tracking-tight">TIME'S UP</h1>
+        <p class="text-xl text-gray-400 max-w-lg mx-auto">The exam deadline has passed. The room is now closed and all active sessions have been terminated.</p>
+        <button onclick="window.safeExitRoom()" class="mt-8 px-6 py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-700 transition shadow-lg">Return to Practice Mode</button>
+    </div>
+</div>
 
-        const boilerplate = {
-            'python': 'def solve():\n    print("Hello from Judge Vortex!")\n\nif __name__ == "__main__":\n    solve()',
-            'cpp': '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from Judge Vortex!\\n";\n    return 0;\n}',
-            'c': '#include <stdio.h>\n\nint main() {\n    printf("Hello from Judge Vortex!\\n");\n    return 0;\n}',
-            'java': 'import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Judge Vortex!");\n    }\n}',
-            'javascript': 'console.log("Hello from Judge Vortex!");',
-            'typescript': 'const message: string = "Hello from Judge Vortex!";\nconsole.log(message);',
-            'ruby': 'puts "Hello from Judge Vortex!"',
-            'go': 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello from Judge Vortex!")\n}',
-            'rust': 'fn main() {\n    println!("Hello from Judge Vortex!");\n}',
-            'php': '<?php\n\necho "Hello from Judge Vortex!\\n";\n?>',
-            'csharp': 'using System;\n\nnamespace JudgeVortex {\n    class Program {\n        static void Main(string[] args) {\n            Console.WriteLine("Hello from Judge Vortex!");\n        }\n    }\n}',
-            'swift': 'print("Hello from Judge Vortex!")',
-            'haskell': 'main :: IO ()\nmain = putStrLn "Hello from Judge Vortex!"',
-            'sql': '-- Write your query here\nSELECT "Hello from Judge Vortex!" AS Welcome;'
-        };
+<div id="antiCheatModal" class="fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center hidden z-[100] backdrop-blur-md">
+    <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md text-center border-4 border-red-500 transform scale-105 transition-transform">
+        <svg class="w-20 h-20 text-red-600 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+        <h2 class="text-3xl font-black text-gray-900 mb-2">TAB SWITCH DETECTED!</h2>
+        <p class="text-gray-600 font-medium mb-6">You have left the exam environment. Return immediately or your exam will be automatically locked.</p>
+        <div class="text-6xl font-black text-red-600 font-mono mb-4" id="cheatCountdownDisplay">10</div>
+        <p class="text-sm text-red-500 font-bold uppercase tracking-widest animate-pulse">Seconds Remaining</p>
+    </div>
+</div>
 
-        const languageConf = new Compartment();
-        const getLangExtension = (langStr) => {
-            switch(langStr) {
-                case 'python': return python();
-                case 'cpp': case 'c': return cpp();
-                case 'java': return java();
-                case 'javascript': case 'typescript': return javascript();
-                case 'rust': return rust();
-                case 'php': return php();
-                case 'go': return go();
-                case 'sql': return sql(); // 🟢 SQL registered in the router
-                case 'ruby': return StreamLanguage.define(ruby);
-                case 'swift': return StreamLanguage.define(swift);
-                case 'haskell': return StreamLanguage.define(haskell);
-                case 'csharp': return StreamLanguage.define(csharp);
-                default: return python(); 
-            }
-        };
+<div id="disqualifiedModal" class="fixed inset-0 bg-gray-900 flex items-center justify-center hidden z-[110]">
+    <div class="text-center">
+        <h1 class="text-6xl font-black text-red-500 mb-4 tracking-tight">EXAM LOCKED</h1>
+        <p class="text-xl text-gray-400 max-w-lg mx-auto">You failed to return to the exam window in time. Your session has been terminated and your workspace is locked.</p>
+        <button onclick="window.safeExitRoom()" class="mt-8 px-6 py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-700 transition">Return to Practice Mode</button>
+    </div>
+</div>
 
-        const initialLang = document.getElementById('language').value;
-        const editorView = new EditorView({
-            state: EditorState.create({
-                doc: boilerplate[initialLang] || boilerplate['python'],
-                extensions: [
-                    basicSetup,
-                    keymap.of([indentWithTab]),
-                    languageConf.of(getLangExtension(initialLang))
-                ]
-            }),
-            parent: document.getElementById('editorContainer')
-        });
+<div id="joinRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200">
+        <h2 class="text-2xl font-bold mb-4 text-gray-800">Join Exam Room</h2>
+        <form id="joinRoomForm" class="space-y-4">
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-1">Enter 6-Digit Room Code</label>
+                <input type="text" id="roomCodeInput" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none uppercase font-mono text-center text-2xl tracking-[0.5em]" placeholder="XXXXXX" maxlength="6" required>
+            </div>
+            <div id="joinErrorMsg" class="text-red-600 text-sm hidden bg-red-50 p-2 rounded border border-red-200 text-center"></div>
+            <div class="flex justify-end space-x-3 mt-6">
+                <button type="button" onclick="document.getElementById('joinRoomModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 shadow-md">Join</button>
+            </div>
+        </form>
+    </div>
+</div>
 
-        document.getElementById('language').addEventListener('change', (e) => {
-            const lang = e.target.value;
-            editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(lang)) });
+<script type="module">
+/* ============================
+   Full JS: Editor, WS, Persistence,
+   Run/Submit, History, Anti-cheat, UI
+   ============================ */
 
-            const cur = editorView.state.doc.toString();
-            const clean = (s) => s.replace(/\s+/g, ''); 
-            const isUntouchedBoilerplate = Object.values(boilerplate).some(bp => clean(bp) === clean(cur));
-            
-            if (isUntouchedBoilerplate || clean(cur) === '') {
-                editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]} });
-            } else {
-                if (confirm(`Overwrite custom code with the default ${lang} template?`)) {
-                    editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]} });
-                }
-            }
-        });
+import { basicSetup } from "codemirror";
+import { EditorView, keymap } from "@codemirror/view";
+import { EditorState, Compartment } from "@codemirror/state";
+import { indentWithTab } from "@codemirror/commands";
 
-        // --- Resizing Engine ---
-        const leftPanel = document.getElementById('leftPanel');
-        const gutterH = document.getElementById('gutterH');
-        const editorTop = document.getElementById('editorTop');
-        const inputBottom = document.getElementById('inputBottom');
-        const gutterV = document.getElementById('gutterV');
+import { StreamLanguage } from "@codemirror/language";
+import { python } from "@codemirror/lang-python";
+import { cpp } from "@codemirror/lang-cpp";
+import { java } from "@codemirror/lang-java";
+import { javascript } from "@codemirror/lang-javascript";
+import { rust } from "@codemirror/lang-rust";
+import { php } from "@codemirror/lang-php";
+import { go } from "@codemirror/lang-go";
+import { sql } from "@codemirror/lang-sql";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
+import { swift } from "@codemirror/legacy-modes/mode/swift";
+import { haskell } from "@codemirror/legacy-modes/mode/haskell";
+import { csharp } from "@codemirror/legacy-modes/mode/clike";
 
-        let isResizingH = false; let isResizingV = false;
+/* -------------------------
+   Basic environment data & Tracking
+   ------------------------- */
+const token = localStorage.getItem('vortex_token');
+const userId = localStorage.getItem('vortex_user_id');
 
-        gutterH.addEventListener('mousedown', () => { isResizingH = true; gutterH.classList.add('active'); document.body.classList.add('resizing'); });
-        gutterV.addEventListener('mousedown', () => { isResizingV = true; gutterV.classList.add('active'); document.body.classList.add('resizing'); });
+const terminalEl = document.getElementById('terminal');
+const runBtnEl = document.getElementById('runBtn');
+const submitBtnEl = document.getElementById('submitBtn');
 
-        document.addEventListener('mousemove', (e) => {
-            if (isResizingH) {
-                const newWidth = (e.clientX / window.innerWidth) * 100;
-                if (newWidth > 20 && newWidth < 85) leftPanel.style.width = `${newWidth}%`;
-            }
-            if (isResizingV) {
-                const offsetTop = editorTop.getBoundingClientRect().top;
-                const newHeight = e.clientY - offsetTop;
-                if (newHeight > 100 && (window.innerHeight - e.clientY) > 80) {
-                    inputBottom.style.height = `${window.innerHeight - e.clientY - 20}px`;
-                }
-            }
-        });
-        document.addEventListener('mouseup', () => { isResizingH = false; isResizingV = false; gutterH.classList.remove('active'); gutterV.classList.remove('active'); document.body.classList.remove('resizing'); });
+let currentMode = "practice"; 
+let questionVerdicts = new Map(); // Tracks state: EVALUATING, PASSED, WRONG_ANSWER
+let pendingEvaluations = new Map(); // submission_id -> question_id map for WS routing
+let submissionCache = {};
+let isExamActive = false;
+let isDisqualified = false;
+let activeExamRoomId = null;
+let activeExamQuestionId = null;
 
-        // --- 🟢 Clean Output Rendering ---
-        const terminalEl = document.getElementById('terminal');
+// 🟢 EXAM TRACKERS
+let totalAssignedQuestions = 0;
+let examDeadlineTime = null;
+let deadlineInterval = null;
 
-        const wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
-        const socket = new WebSocket(`${wsProtocol}${window.location.host}/ws/submissions/${userId}/`);
-        
-        socket.onmessage = (e) => {
-            const data = JSON.parse(e.data);
-            const isSuccess = data.status === "SUCCESS";
-            
-            // Raw string sanitization
-            const safeText = data.output ? data.output.trim().replace(/</g, "&lt;").replace(/>/g, "&gt;") : "(No output)";
-            
-            // Simple color coding: Green for success, Red for any error
-            const textColor = isSuccess ? 'text-green-600' : 'text-red-600';
-            const statusLabel = `<div class="font-bold mb-2 text-xs uppercase tracking-wider ${textColor}">${data.status}</div>`;
-            
-            // Clean unboxed output
-            terminalEl.innerHTML = `
-                ${statusLabel}
-                <pre class="${textColor} whitespace-pre-wrap break-all m-0 p-0 text-left leading-relaxed">${safeText}</pre>
-            `;
-        };
+/* Boilerplates */
+const boilerplate = {
+    'python': 'def solve():\n    print("Hello from Judge Vortex!")\n\nif __name__ == "__main__":\n    solve()',
+    'cpp': '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from Judge Vortex!\\n";\n    return 0;\n}',
+    'c': '#include <stdio.h>\n\nint main() {\n    printf("Hello from Judge Vortex!\\n");\n    return 0;\n}',
+    'java': 'import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Judge Vortex!");\n    }\n}',
+    'javascript': 'console.log("Hello from Judge Vortex!");',
+    'typescript': 'const message: string = "Hello from Judge Vortex!";\nconsole.log(message);',
+    'ruby': 'puts "Hello from Judge Vortex!"',
+    'go': 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello from Judge Vortex!")\n}',
+    'rust': 'fn main() {\n    println!("Hello from Judge Vortex!");\n}',
+    'php': '<?php\n\necho "Hello from Judge Vortex!\\n";\n?>',
+    'csharp': 'using System;\n\nnamespace JudgeVortex {\n    class Program {\n        static void Main(string[] args) {\n            Console.WriteLine("Hello from Judge Vortex!");\n        }\n    }\n}',
+    'swift': 'print("Hello from Judge Vortex!")',
+    'haskell': 'main :: IO ()\nmain = putStrLn "Hello from Judge Vortex!"',
+    'sql': '-- Write your query here\nSELECT "Hello from Judge Vortex!" AS Welcome;'
+};
 
-        document.getElementById('runBtn').onclick = async () => {
-            tabConsole.click(); 
-            terminalEl.innerHTML = '<div class="text-blue-500 italic">Executing...</div>'; 
-            const code = editorView.state.doc.toString();
-            const lang = document.getElementById('language').value;
-            const input = document.getElementById('customInput').value;
-            
-            try {
-                await fetch('/api/submissions/submit/', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-                    body: JSON.stringify({ 
-                        code: code, 
-                        language: lang, 
-                        user_input: input, 
-                        time_limit_ms: 60000,
-                        room_id: activeExamRoomId,
-                        question_id: activeExamQuestionId
-                    })
-                });
-            } catch (err) { terminalEl.innerHTML = `<div class="text-red-600">API Error: ${err.message}</div>`; }
-        };
+const languageConf = new Compartment();
+const getLangExtension = (langStr) => {
+    switch(langStr) {
+        case 'python': return python();
+        case 'cpp': case 'c': return cpp();
+        case 'java': return java();
+        case 'javascript': case 'typescript': return javascript();
+        case 'rust': return rust();
+        case 'php': return php();
+        case 'go': return go();
+        case 'sql': return sql();
+        case 'ruby': return StreamLanguage.define(ruby);
+        case 'swift': return StreamLanguage.define(swift);
+        case 'haskell': return StreamLanguage.define(haskell);
+        case 'csharp': return StreamLanguage.define(csharp);
+        default: return python();
+    }
+};
 
-        document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                e.preventDefault();
-                document.getElementById('runBtn').click();
-            }
-        });
+/* -------------------------
+   Editor init
+   ------------------------- */
+const initialLang = document.getElementById('language').value || 'python';
+const editorView = new EditorView({
+    state: EditorState.create({
+        doc: boilerplate[initialLang] || boilerplate['python'],
+        extensions: [
+            basicSetup,
+            keymap.of([indentWithTab]),
+            languageConf.of(getLangExtension(initialLang)),
+            EditorView.editable.of(true)
+        ]
+    }),
+    parent: document.getElementById('editorContainer')
+});
 
-        // --- Tabs & History ---
-        const tabConsole = document.getElementById('tab-console');
-        const tabHistory = document.getElementById('tab-history');
-        const historyPanel = document.getElementById('historyPanel');
-        let submissionCache = {};
+document.getElementById('language').addEventListener('change', (e) => {
+    const lang = e.target.value;
+    editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(lang)) });
+    const cur = editorView.state.doc.toString();
+    const clean = (s) => s.replace(/\s+/g, '');
+    const isUntouchedBoilerplate = Object.values(boilerplate).some(bp => clean(bp) === clean(cur));
+    if (isUntouchedBoilerplate || clean(cur) === '') {
+        editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]} });
+    } else {
+        if (confirm(`Overwrite custom code with the default ${lang} template?`)) {
+            editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]} });
+        }
+    }
+});
 
-        tabConsole.onclick = () => { tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none"; tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50"; terminalEl.classList.remove('hidden'); historyPanel.classList.add('hidden'); };
-        tabHistory.onclick = () => { tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none"; tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50"; historyPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); fetchHistory(); };
+/* -------------------------
+   Resizing engine
+   ------------------------- */
+const leftPanel = document.getElementById('leftPanel');
+const gutterH = document.getElementById('gutterH');
+const editorTop = document.getElementById('editorTop');
+const inputBottom = document.getElementById('inputBottom');
+const gutterV = document.getElementById('gutterV');
+let isResizingH = false; let isResizingV = false;
+gutterH.addEventListener('mousedown', () => { isResizingH = true; gutterH.classList.add('active'); document.body.classList.add('resizing'); });
+gutterV.addEventListener('mousedown', () => { isResizingV = true; gutterV.classList.add('active'); document.body.classList.add('resizing'); });
+document.addEventListener('mousemove', (e) => {
+    if (isResizingH) {
+        const newWidth = (e.clientX / window.innerWidth) * 100;
+        if (newWidth > 20 && newWidth < 85) leftPanel.style.width = `${newWidth}%`;
+    }
+    if (isResizingV) {
+        const offsetTop = editorTop.getBoundingClientRect().top;
+        const newHeight = e.clientY - offsetTop;
+        if (newHeight > 100 && (window.innerHeight - e.clientY) > 80) {
+            inputBottom.style.height = `${window.innerHeight - e.clientY - 20}px`;
+        }
+    }
+});
+document.addEventListener('mouseup', () => { isResizingH = false; isResizingV = false; gutterH.classList.remove('active'); gutterV.classList.remove('active'); document.body.classList.remove('resizing'); });
 
-        async function fetchHistory() {
-            const listEl = document.getElementById('historyList');
-            listEl.innerHTML = '<div class="p-6 text-center text-gray-400 animate-pulse text-xs">Loading history...</div>';
-            try {
-                const res = await fetch('/api/submissions/', { headers: { 'Authorization': `Token ${token}` }});
-                const data = await res.json();
-                listEl.innerHTML = '';
-                submissionCache = {};
-                
-                (Array.isArray(data) ? data : data.results || []).forEach(sub => {
-                    const statusColor = sub.status === "SUCCESS" ? "text-green-600" : "text-red-600";
-                    submissionCache[sub.id] = sub;
+/* -------------------------
+   Utility: escape HTML
+   ------------------------- */
+function escapeHtml(unsafe) {
+    if (unsafe === null || unsafe === undefined) return '';
+    return String(unsafe)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+}
 
-                    listEl.innerHTML += `
-                    <div data-id="${sub.id}" class="history-row p-4 hover:bg-gray-50 border-l-4 ${sub.status === "SUCCESS" ? 'border-green-500' : 'border-red-500'} group relative cursor-pointer transition-colors">
-                        <div class="flex justify-between mb-1">
-                            <span class="font-bold text-xs ${statusColor}">${sub.status}</span>
-                            <span class="text-[10px] text-gray-400 font-mono">${new Date(sub.submitted_at).toLocaleString()}</span>
-                        </div>
-                        <div class="flex justify-between items-center text-xs">
-                            <div class="flex space-x-2">
-                                <span class="text-blue-600 font-mono font-bold">${sub.language}</span>
-                                <span class="text-gray-500 font-mono">${sub.execution_time_ms || 0}ms</span>
-                            </div>
-                            <button data-del="${sub.id}" class="del-btn text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                            </button>
-                        </div>
-                    </div>`;
-                });
+/* -------------------------
+   WebSocket (robust) & Terminal renderer
+   ------------------------- */
+const wsProtocol = window.location.protocol === "https:" ? "wss://" : "ws://";
+let socket = null;
+try {
+    socket = new WebSocket(`${wsProtocol}${window.location.host}/ws/submissions/${userId}/`);
+} catch (err) {
+    console.warn("WebSocket init failed:", err);
+    socket = null;
+}
 
-                document.querySelectorAll('.history-row').forEach(row => { row.onclick = () => loadPastCode(row.getAttribute('data-id')); });
-                document.querySelectorAll('.del-btn').forEach(btn => { btn.onclick = (e) => { e.stopPropagation(); deleteSubmission(btn.getAttribute('data-del')); }; });
+if (socket) {
+    socket.onopen = () => { console.info("WebSocket connected."); };
+    socket.onclose = () => { console.warn("WebSocket closed."); };
+    socket.onerror = (e) => { console.warn("WebSocket error", e); };
 
-            } catch(e) { listEl.innerHTML = '<div class="p-6 text-red-500 text-center text-xs">Error loading history.</div>'; }
+    socket.onmessage = (e) => {
+        let payload;
+        try { 
+            payload = JSON.parse(e.data); 
+        } catch (err) { 
+            return; 
         }
 
-        function loadPastCode(id) {
-            const sub = submissionCache[id];
-            if (!sub || !sub.code) return;
-            const langDropdown = document.getElementById('language');
-            langDropdown.value = sub.language;
-            editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(sub.language)) });
-            editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: sub.code} });
-            tabConsole.click();
+        // --- TEACHER CONTROL LOGIC (KICK/CLOSE) ---
+        // Check for common 'kick' or 'action' signals
+        if (payload.type === 'kick_student' || payload.action === 'kick' || payload.type === 'room_closed') {
+            alert(payload.message || "The teacher has removed you from the session.");
+            // If you have a function to exit, call it:
+            if (typeof safeExitRoom === 'function') safeExitRoom();
+            else window.location.reload(); 
+            return;
         }
 
-        async function deleteSubmission(id) {
-            if (confirm("Delete record?")) { 
-                await fetch(`/api/submissions/${id}/delete/`, { method: 'DELETE', headers: { 'Authorization': `Token ${token}` }}); 
-                fetchHistory(); 
-            }
-        }
+        // --- SUBMISSION RESULTS LOGIC ---
+        const candidate = payload.data || payload.result || payload || {};
+        const submission = candidate.submission || candidate;
 
-        // ==========================================
-        // 🟢 EXAM ROOM LOGIC
-        // ==========================================
-        const tabExam = document.getElementById('tab-exam');
-        const examPanel = document.getElementById('examPanel');
-        let activeExamRoomId = null;
-        let activeExamQuestionId = null;
+        const submissionId = submission.submission_id || submission.id;
+        const output = submission.output || submission.stdout || submission.message;
+        const status = (submission.status || submission.result || "SUCCESS").toUpperCase();
 
-        // Modal Toggles
-        document.getElementById('joinRoomBtn').onclick = () => {
-            document.getElementById('joinErrorMsg').classList.add('hidden');
-            document.getElementById('joinRoomModal').classList.remove('hidden');
-        };
-
-        // Handle Tab Clicks (Update your existing tab logic to include the Exam Tab)
-        tabExam.onclick = () => {
-            tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-purple-600 border-b-2 border-purple-600 uppercase tracking-widest bg-white focus:outline-none";
-            tabConsole.className = tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
-            examPanel.classList.remove('hidden');
-            terminalEl.classList.add('hidden');
-            historyPanel.classList.add('hidden');
-        };
-
-        // Handle Join Submission
-        document.getElementById('joinRoomForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const code = document.getElementById('roomCodeInput').value.toUpperCase();
-            const errorMsg = document.getElementById('joinErrorMsg');
-
-            try {
-                const res = await fetch('/api/rooms/join/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-                    body: JSON.stringify({ room_code: code })
-                });
-                const data = await res.json();
-
-                if (res.ok) {
-                    document.getElementById('joinRoomModal').classList.add('hidden');
-                    tabExam.classList.remove('hidden'); 
-                    isExamActive = true;
-                    try { document.documentElement.requestFullscreen(); } catch(err) { console.log("Fullscreen blocked."); }
-                    
-                    // Populate the questions
-                    document.getElementById('examTitle').innerText = `Exam: ${data.room_title}`;
-                    const qList = document.getElementById('examQuestionsList');
-                    qList.innerHTML = '';
-
-                    data.assigned_questions.forEach((q, index) => {
-                        qList.innerHTML += `
-                            <div class="border border-gray-200 p-5 rounded-lg bg-gray-50 shadow-sm relative">
-                                <span class="absolute top-4 right-4 bg-purple-100 text-purple-700 text-[10px] font-bold px-2 py-1 rounded uppercase">Q${index + 1}</span>
-                                <h3 class="font-bold text-lg text-blue-600 mb-2 pr-8">${q.title}</h3>
-                                <p class="text-sm text-gray-700 font-mono whitespace-pre-wrap bg-white p-3 rounded border border-gray-100 mb-3">${q.description}</p>
-                                <button onclick="window.setActiveQuestion(${q.id}, ${q.room}, this)" class="bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center border border-blue-200">
-                                    Lock In & Solve This Question
-                                </button>
-                            </div>
-                        `;
-                    });
-                    
-                    tabExam.click(); // Auto-switch to the exam tab
-                    alert(`Success! You have entered the exam.`);
-                } else {
-                    errorMsg.innerText = data.error || "Failed to join room.";
-                    errorMsg.classList.remove('hidden');
+        if (submissionId) {
+            terminalEl.innerHTML = `<div class="mb-4 whitespace-pre-wrap font-mono text-gray-800">${escapeHtml(output ?? "")}</div>`;
+            // Map evaluation to Question Card UI
+            if (pendingEvaluations.has(submissionId)) {
+                const qid = pendingEvaluations.get(submissionId);
+                // Don't clear 'evaluating' if it's still processing
+                if (status !== 'PENDING' && status !== 'PROCESSING') {
+                    applyQuestionVerdict(qid, status);
+                    pendingEvaluations.delete(submissionId); 
                 }
-            } catch (err) {
-                errorMsg.innerText = "Network Error.";
-                errorMsg.classList.remove('hidden');
             }
-        });
+        }
+    };
+}
 
-        // Function to lock in which question the student is currently solving
-        window.setActiveQuestion = (qId, roomId, btnElement) => {
-            activeExamQuestionId = qId;
-            activeExamRoomId = roomId;
-            
-            // UI Feedback: Reset all buttons, highlight the active one
-            document.querySelectorAll('#examQuestionsList button').forEach(b => {
-                b.innerText = "Lock In & Solve This Question";
-                b.className = "bg-blue-100 hover:bg-blue-200 text-blue-700 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center border border-blue-200";
+/* -------------------------
+   Persistence & autosave
+   ------------------------- */
+let savedCode = JSON.parse(localStorage.getItem('vortex_saved_code') || '{}');
+
+function persistCurrentCode() {
+    if (!activeExamQuestionId || !activeExamRoomId) return;
+    const key = `${activeExamRoomId}_${activeExamQuestionId}`;
+    savedCode[key] = {
+        code: editorView.state.doc.toString(),
+        language: document.getElementById('language').value,
+        ts: Date.now()
+    };
+    try { localStorage.setItem('vortex_saved_code', JSON.stringify(savedCode)); } catch (e) { }
+}
+setInterval(persistCurrentCode, 2000);
+
+function restoreSavedCode(roomId, qId) {
+    const key = `${roomId}_${qId}`;
+    if (savedCode[key] && savedCode[key].code) {
+        const saved = savedCode[key];
+        if (saved.language && document.getElementById('language').value !== saved.language) {
+            document.getElementById('language').value = saved.language;
+            editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(saved.language)) });
+        }
+        editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: saved.code } });
+        return true;
+    }
+    return false;
+}
+
+/* -------------------------
+   🟢 SESSION PERSISTENCE (NEW FEATURE)
+   ------------------------- */
+function saveExamSession(roomCode) {
+    localStorage.setItem('vortex_active_room_code', roomCode);
+}
+
+function clearExamSession() {
+    localStorage.removeItem('vortex_active_room_code');
+    localStorage.removeItem('vortex_question_verdicts');
+    questionVerdicts.clear();
+}
+
+async function resumeActiveExam() {
+    const savedRoomCode = localStorage.getItem('vortex_active_room_code');
+    if (!savedRoomCode) return;
+
+    try {
+        const res = await fetch('/api/rooms/join/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+            body: JSON.stringify({ room_code: savedRoomCode })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            renderExamMode(data, savedRoomCode);
+            // Restore verdicts from local storage so cards stay green/red
+            const savedVerdicts = JSON.parse(localStorage.getItem('vortex_question_verdicts') || '{}');
+            questionVerdicts = new Map(Object.entries(savedVerdicts).map(([k, v]) => [parseInt(k), v]));
+            questionVerdicts.forEach((status, qId) => {
+                applyQuestionVerdict(qId, status, true);
             });
-            
-            btnElement.innerText = "Currently Solving...";
-            btnElement.className = "bg-green-600 text-white text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-md shadow-green-600/20";
-            
-            alert(`Your code executions will now be submitted against this question!`);
-        };
+        } else {
+            clearExamSession();
+        }
+    } catch(err) { }
+}
 
-        // ==========================================
-        // Anti-Cheat
-        // ==========================================
-        let isExamActive = false;
-        let isDisqualified = false;
-        let cheatTimer = null;
-        let cheatCountdown = 10;
+function renderExamMode(data, code) {
+    document.getElementById('joinRoomModal').classList.add('hidden');
+    document.getElementById('tab-exam').classList.remove('hidden');
 
-        // 1. Listen for Tab Switching or Minimizing
-        document.addEventListener("visibilitychange", () => {
-            if (isExamActive && !isDisqualified) {
-                if (document.hidden) {
-                    startCheatTimer(); // They left the tab
-                } else {
-                    stopCheatTimer();  // They came back
-                }
-            }
+    currentMode = "exam";
+    isExamActive = true;
+    updateSubmitVisibility();
+
+    totalAssignedQuestions = data.assigned_questions.length;
+    if(data.deadline) {
+        startExamDeadlineCountdown(data.deadline);
+    }
+
+    document.getElementById('examTitle').innerText = `Exam: ${data.room_title}`;
+    const qList = document.getElementById('examQuestionsList');
+    qList.innerHTML = '';
+    
+    data.assigned_questions.forEach((q, index) => {
+        qList.innerHTML += `
+            <div id="q-card-${q.id}" class="bg-white border-2 border-gray-200 p-4 rounded-xl shadow-sm relative transition flex flex-col hover:border-blue-300">
+                <div class="flex justify-between items-center mb-3">
+                    <span class="bg-gray-100 text-gray-500 text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">Q${index + 1}</span>
+                    <span id="q-badge-${q.id}" class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Unattempted</span>
+                </div>
+                <h3 class="font-bold text-gray-800 text-base mb-1 line-clamp-1">${escapeHtml(q.title)}</h3>
+                <p class="text-xs text-gray-500 mb-4 line-clamp-2 flex-1 text-left">${escapeHtml(q.description)}</p>
+                <button id="lock-btn-${q.id}" onclick="window.setActiveQuestion(${q.id}, ${q.room})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-sm">
+                    Open Editor
+                </button>
+            </div>
+        `;
+    });
+    tabExam.click();
+}
+
+/* -------------------------
+   Submit button visibility control
+   ------------------------- */
+function updateSubmitVisibility() {
+    if (currentMode === "exam") {
+        submitBtnEl.style.display = "inline-flex";
+    } else {
+        submitBtnEl.style.display = "none";
+    }
+}
+
+/* -------------------------
+   🟢 Run Button (LOCAL SCRATCHPAD ONLY)
+   ------------------------- */
+runBtnEl.onclick = async (e) => {
+    e.preventDefault();
+    
+    if (isExamActive && activeExamQuestionId && questionVerdicts.has(activeExamQuestionId)) {
+        if (questionVerdicts.get(activeExamQuestionId) !== 'EVALUATING') {
+            return alert("Question is already permanently submitted and locked.");
+        }
+    }
+
+    document.getElementById('tab-console').click();
+    terminalEl.innerHTML = `<div class="text-blue-500 italic font-mono text-sm animate-pulse">Executing local run with custom input...</div>`;
+
+    const code = editorView.state.doc.toString();
+    const lang = document.getElementById('language').value;
+    const input = document.getElementById('customInput').value;
+
+    try {
+        const res = await fetch('/api/submissions/submit/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+            body: JSON.stringify({
+                code: code,
+                language: lang,
+                user_input: input,
+                time_limit_ms: 60000,
+                room_id: activeExamRoomId, 
+                question_id: null // 🟢 Null forces backend to ignore testcases and act as a scratchpad
+            })
         });
 
-        // 2. Listen for exiting Fullscreen
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement && isExamActive && !isDisqualified) {
-                alert("⚠️ WARNING: You have exited full screen. Please stay focused on the exam.");
-            }
+        if (!res.ok) {
+            const errData = await res.json();
+            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Error: ${escapeHtml(errData.error || "Execution failed")}</div>`;
+        }
+    } catch (err) {
+        terminalEl.innerHTML = `<div class="text-red-500 font-mono">Network Error: ${escapeHtml(err.message || String(err))}</div>`;
+    }
+};
+
+/* -------------------------
+   🟢 Final Submit (EVALUATE AND COLOR, NO LOCKING)
+   ------------------------- */
+submitBtnEl.onclick = async (e) => {
+    e.preventDefault();
+    if (currentMode !== "exam") return; 
+    if (!activeExamQuestionId) { alert("Select a question first."); return; }
+
+    if (!confirm("Submit this code for grading?")) return;
+
+    applyQuestionVerdict(activeExamQuestionId, 'EVALUATING');
+    document.getElementById('tab-console').click();
+    terminalEl.innerHTML = `<div class="text-yellow-600 italic font-mono text-sm animate-pulse">Evaluating against hidden test cases...</div>`;
+
+    try {
+        const res = await fetch('/api/submissions/submit/', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json', 
+                'Authorization': `Token ${token}` 
+            },
+            body: JSON.stringify({
+                code: editorView.state.doc.toString(),
+                language: document.getElementById('language').value,
+                room_id: activeExamRoomId,
+                question_id: activeExamQuestionId,
+                is_exam_submission: true, // Key flag for the backend
+                is_final_submit: true     // Secondary flag often used for grading
+            })
         });
 
-        function startCheatTimer() {
-            if (cheatTimer) return; // Timer already running
-            
-            document.getElementById('antiCheatModal').classList.remove('hidden');
-            cheatCountdown = 10;
-            document.getElementById('cheatCountdownDisplay').innerText = cheatCountdown;
+        const data = await res.json();
+        
+        if (res.ok && data.id) {
+            // Link the ID to the UI so WebSocket knows which question card to update
+            pendingEvaluations.set(data.id, activeExamQuestionId);
+        } else {
+            const errorMsg = data.error || data.detail || 'Unknown Error';
+            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(errorMsg)}</div>`;
+            applyQuestionVerdict(activeExamQuestionId, 'ERROR');
+        }
+    } catch (err) {
+        terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submission Network Error.</div>`;
+        applyQuestionVerdict(activeExamQuestionId, 'ERROR');
+    }
+};
 
-            cheatTimer = setInterval(() => {
-                cheatCountdown--;
-                document.getElementById('cheatCountdownDisplay').innerText = cheatCountdown;
-                
-                if (cheatCountdown <= 0) {
-                    clearInterval(cheatTimer);
-                    disqualifyStudent();
-                }
-            }, 1000);
+document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        runBtnEl.click();
+    }
+});
+
+/* -------------------------
+   Tabs logic
+   ------------------------- */
+const tabConsole = document.getElementById('tab-console');
+const tabHistory = document.getElementById('tab-history');
+const tabExam = document.getElementById('tab-exam');
+const historyPanel = document.getElementById('historyPanel');
+const examPanel = document.getElementById('examPanel');
+
+tabConsole.onclick = () => {
+    tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
+    tabHistory.className = tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
+    terminalEl.classList.remove('hidden'); historyPanel.classList.add('hidden'); examPanel.classList.add('hidden');
+};
+tabHistory.onclick = () => {
+    tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
+    tabConsole.className = tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
+    historyPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); examPanel.classList.add('hidden'); fetchHistory();
+};
+tabExam.onclick = () => {
+    tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-purple-600 border-b-2 border-purple-600 uppercase tracking-widest bg-white focus:outline-none";
+    tabConsole.className = tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
+    examPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); historyPanel.classList.add('hidden');
+};
+
+/* -------------------------
+   🟢 History logic (FILTERED BY EXAM)
+   ------------------------- */
+async function fetchHistory() {
+    const listEl = document.getElementById('historyList');
+    listEl.innerHTML = '<div class="p-6 text-center text-gray-400 animate-pulse text-xs">Loading history...</div>';
+    try {
+        const res = await fetch('/api/submissions/', { headers: { 'Authorization': `Token ${token}` }});
+        const data = await res.json();
+        listEl.innerHTML = ''; submissionCache = {};
+        
+        let historyData = Array.isArray(data) ? data : data.results || [];
+        
+        // 🟢 ONLY show submissions for THIS room if in an exam, else show general practice submissions
+        if (isExamActive && activeExamRoomId) {
+            historyData = historyData.filter(sub => sub.room_id === activeExamRoomId || sub.room === activeExamRoomId);
+        } else {
+            historyData = historyData.filter(sub => !sub.room && !sub.room_id);
         }
 
-        function stopCheatTimer() {
-            if (cheatTimer) {
-                clearInterval(cheatTimer);
-                cheatTimer = null;
-            }
-            document.getElementById('antiCheatModal').classList.add('hidden');
+        if (historyData.length === 0) {
+            listEl.innerHTML = '<div class="p-6 text-center text-gray-400 italic text-xs">No submissions found for this session.</div>';
+            return;
         }
 
-        function disqualifyStudent() {
-            isDisqualified = true;
-            activeExamRoomId = null;
-            activeExamQuestionId = null;
-            isExamActive = false;
-            
-            // Hide warning, show locked screen
-            document.getElementById('antiCheatModal').classList.add('hidden');
-            document.getElementById('disqualifiedModal').classList.remove('hidden');
-            
-            // Disable the Run button and Editor
-            const runBtn = document.getElementById('runBtn');
-            runBtn.disabled = true;
-            runBtn.className = "bg-gray-600 text-gray-400 px-5 py-2 rounded-lg text-sm font-bold shadow-md cursor-not-allowed flex items-center";
-            runBtn.innerHTML = "LOCKED";
-        }
+        historyData.forEach(sub => {
+            const statusColor = sub.status === "SUCCESS" || sub.status === "PASSED" ? "text-green-600" : "text-red-600";
+            submissionCache[sub.id] = sub;
+            listEl.innerHTML += `
+            <div data-id="${sub.id}" class="history-row p-4 hover:bg-gray-50 border-l-4 ${statusColor.includes('green') ? 'border-green-500' : 'border-red-500'} group relative cursor-pointer transition-colors">
+                <div class="flex justify-between mb-1">
+                    <span class="font-bold text-xs ${statusColor}">${sub.status}</span>
+                    <span class="text-[10px] text-gray-400 font-mono">${new Date(sub.submitted_at).toLocaleString()}</span>
+                </div>
+                <div class="flex justify-between items-center text-xs">
+                    <div class="flex space-x-2">
+                        <span class="text-blue-600 font-mono font-bold">${sub.language}</span>
+                        <span class="text-gray-500 font-mono">${sub.execution_time_ms || 0}ms</span>
+                    </div>
+                    <button data-del="${sub.id}" class="del-btn text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                </div>
+            </div>`;
+        });
+        document.querySelectorAll('.history-row').forEach(row => { row.onclick = () => loadPastCode(row.getAttribute('data-id')); });
+        document.querySelectorAll('.del-btn').forEach(btn => { btn.onclick = (e) => { e.stopPropagation(); deleteSubmission(btn.getAttribute('data-del')); }; });
+    } catch(e) { listEl.innerHTML = '<div class="p-6 text-red-500 text-center text-xs">Error loading history.</div>'; }
+}
 
-    </script>
+function loadPastCode(id) {
+    const sub = submissionCache[id];
+    if (!sub || !sub.code) return;
+    document.getElementById('language').value = sub.language;
+    editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(sub.language)) });
+    editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: sub.code} });
+    tabConsole.click();
+}
+
+async function deleteSubmission(id) {
+    if (confirm("Delete record?")) {
+        await fetch(`/api/submissions/${id}/delete/`, { method: 'DELETE', headers: { 'Authorization': `Token ${token}` }});
+        fetchHistory();
+    }
+}
+
+/* -------------------------
+   Join exam & Timer Logic
+   ------------------------- */
+document.getElementById('joinRoomBtn').onclick = () => {
+    document.getElementById('joinErrorMsg').classList.add('hidden');
+    document.getElementById('joinRoomModal').classList.remove('hidden');
+};
+
+document.getElementById('joinRoomForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('roomCodeInput').value.toUpperCase();
+    const errorMsg = document.getElementById('joinErrorMsg');
+    try {
+        const res = await fetch('/api/rooms/join/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+            body: JSON.stringify({ room_code: code })
+        });
+        const data = await res.json();
+        if (res.ok) {
+            clearExamSession(); 
+            saveExamSession(code);
+            questionVerdicts.clear();
+            pendingEvaluations.clear();
+            
+            renderExamMode(data, code);
+            
+            try { document.documentElement.requestFullscreen(); } catch(err) { }
+        } else {
+            errorMsg.innerText = data.error || "Failed to join room."; errorMsg.classList.remove('hidden');
+        }
+    } catch (err) {
+        errorMsg.innerText = "Network Error."; errorMsg.classList.remove('hidden');
+    }
+});
+
+/* -------------------------
+   Dynamic Verdict Styling & Completion Checker (NO LOCKING)
+   ------------------------- */
+function applyQuestionVerdict(qId, status, isRestore = false) {
+    if (!qId) return;
+    questionVerdicts.set(qId, status); 
+
+    // Save to local storage so reloads remember it
+    if (!isRestore) localStorage.setItem('vortex_question_verdicts', JSON.stringify(Object.fromEntries(questionVerdicts)));
+
+    const qCard = document.getElementById(`q-card-${qId}`);
+    const badge = document.getElementById(`q-badge-${qId}`);
+    const btn = document.getElementById(`lock-btn-${qId}`);
+
+    let borderColor = 'border-gray-200';
+    let bgColor = 'bg-white';
+    let badgeClass = 'text-gray-400';
+    let badgeText = status;
+    let btnClass = 'bg-gray-100 text-gray-500 border-gray-200';
+
+    if (status === 'EVALUATING') {
+        borderColor = 'border-yellow-400'; bgColor = 'bg-yellow-50';
+        badgeClass = 'text-yellow-600 animate-pulse'; badgeText = 'Evaluating...';
+        btnClass = 'bg-yellow-100 text-yellow-700 border-yellow-200';
+    } else if (status === 'PASSED' || status === 'SUCCESS') {
+        borderColor = 'border-green-500'; bgColor = 'bg-green-50';
+        badgeClass = 'text-green-600'; badgeText = '✓ PASSED';
+        btnClass = 'bg-green-500 text-white border-green-600';
+    } else if (status === 'ERROR' || status === 'SYSTEM_ERROR') {
+        borderColor = 'border-red-500'; bgColor = 'bg-red-50';
+        badgeClass = 'text-red-600'; badgeText = 'Server Error (Try again)';
+        btnClass = 'bg-blue-600 text-white border-blue-700'; 
+    } else {
+        borderColor = 'border-red-500'; bgColor = 'bg-red-50';
+        badgeClass = 'text-red-600'; badgeText = '✗ ' + status.replace(/_/g, ' ');
+        btnClass = 'bg-red-500 text-white border-red-600';
+    }
+
+    if (qCard) qCard.className = `border-2 ${borderColor} ${bgColor} p-4 rounded-xl shadow-sm relative transition flex flex-col`;
+    if (badge) {
+        badge.className = `text-[10px] font-bold uppercase tracking-widest ${badgeClass}`;
+        badge.innerText = badgeText;
+    }
+    
+    if (btn) {
+        btn.innerText = (activeExamQuestionId === qId) ? "Currently Solving..." : "Open Editor";
+        btn.disabled = false; // 🟢 NEVER lock the question card button
+        btn.className = `text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center ${btnClass}`;
+    }
+
+    if (activeExamQuestionId === qId) {
+        // 🟢 NEVER lock the editor or the submit button!
+        editorView.dispatch({ effects: EditorView.editable.of(true) });
+        document.getElementById('runBtn').disabled = false;
+        if (submitBtnEl) {
+            submitBtnEl.disabled = false; 
+            submitBtnEl.innerText = "Submit";
+            submitBtnEl.className = "bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg";
+        }
+    }
+
+    checkExamCompletion();
+}
+
+function checkExamCompletion() {
+    if (totalAssignedQuestions > 0 && questionVerdicts.size === totalAssignedQuestions) {
+        let allDone = true;
+        questionVerdicts.forEach(val => { if (val === 'EVALUATING') allDone = false; });
+        if (allDone) document.getElementById('examCompletedModal').classList.remove('hidden');
+    }
+}
+
+// 🟢 Safe Exit Handler
+window.safeExitRoom = () => {
+    document.getElementById('examCompletedModal').classList.add('hidden');
+    document.getElementById('timeUpModal').classList.add('hidden'); 
+    document.getElementById('disqualifiedModal').classList.add('hidden');
+    clearExamSession();
+    activeExamRoomId = null;
+    activeExamQuestionId = null;
+    if (deadlineInterval) clearInterval(deadlineInterval);
+    document.getElementById('examTimerDisplay').classList.add('hidden');
+    switchToPractice(); 
+};
+
+function startExamDeadlineCountdown(deadlineString) {
+    // Force the deadline string to be treated as UTC/Zulu time to avoid the 5-hour offset
+    const targetTimeStr = deadlineString.endsWith('Z') ? deadlineString : deadlineString + 'Z';
+    const examDeadlineTime = new Date(targetTimeStr).getTime();
+    
+    const timerDisplay = document.getElementById('examTimerDisplay');
+    if (!timerDisplay) return;
+    
+    timerDisplay.classList.remove('hidden');
+
+    if (window.deadlineInterval) clearInterval(window.deadlineInterval);
+
+    window.deadlineInterval = setInterval(() => {
+        const now = new Date().getTime(); // Browser time in UTC
+        const distance = examDeadlineTime - now;
+
+        if (distance <= 0) {
+            clearInterval(window.deadlineInterval);
+            timerDisplay.innerText = "EXPIRED";
+            // Trigger auto-submit logic here if you have it
+        } else {
+            const hours = Math.floor(distance / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+            timerDisplay.innerText = `Ends in: ${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+        }
+    }, 1000);
+}
+
+function triggerTimeUp() {
+    isExamActive = false;
+    activeExamRoomId = null;
+    activeExamQuestionId = null;
+    document.getElementById('examTimerDisplay').classList.add('hidden');
+    document.getElementById('timeUpModal').classList.remove('hidden');
+    
+    editorView.dispatch({ effects: EditorView.editable.of(false) });
+    document.getElementById('runBtn').disabled = true;
+    if (document.getElementById('submitBtn')) document.getElementById('submitBtn').disabled = true;
+    clearExamSession();
+}
+
+/* -------------------------
+   setActiveQuestion (NO LOCKING)
+   ------------------------- */
+window.setActiveQuestion = (qId, roomId) => {
+    if (activeExamQuestionId && activeExamRoomId) persistCurrentCode();
+
+    activeExamQuestionId = qId;
+    activeExamRoomId = roomId;
+
+    document.querySelectorAll('#examQuestionsList > div').forEach(card => {
+        const cId = parseInt(card.id.replace('q-card-', ''));
+        const btn = document.getElementById(`lock-btn-${cId}`);
+        
+        if (cId === qId) {
+            btn.innerText = "Currently Solving...";
+            btn.className = "bg-blue-600 text-white border border-blue-700 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-md";
+        } else {
+            btn.innerText = "Open Editor";
+            btn.className = "bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-sm";
+        }
+    });
+    
+    const questionCard = document.getElementById(`q-card-${qId}`);
+    if (questionCard) {
+        const viewer = document.getElementById('examQuestionViewer');
+        const title = questionCard.querySelector('h3').innerText;
+        const description = questionCard.querySelector('p').innerText;
+
+        viewer.innerHTML = `
+            <div class="max-w-4xl mx-auto">
+                <h2 class="text-2xl font-black text-blue-700 mb-4">${title}</h2>
+                <div class="whitespace-pre-wrap font-mono text-sm bg-white p-5 rounded-lg border border-gray-200 text-left">
+                    ${escapeHtml(description)}
+                </div>
+            </div>
+        `;
+    }
+
+    const restored = restoreSavedCode(roomId, qId);
+    if (!restored) {
+        const cur = editorView.state.doc.toString();
+        const clean = (s) => s.replace(/\s+/g, '');
+        const isUntouchedBoilerplate = Object.values(boilerplate).some(bp => clean(bp) === clean(cur));
+        if (isUntouchedBoilerplate || clean(cur) === '') {
+            const lang = document.getElementById('language').value;
+            editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: boilerplate[lang] } });
+        }
+    }
+
+    // 🟢 Keep everything unlocked so they can submit multiple times
+    editorView.dispatch({ effects: EditorView.editable.of(true) });
+    document.getElementById('runBtn').disabled = false;
+    submitBtnEl.disabled = false;
+    submitBtnEl.innerText = "Final Submit";
+    submitBtnEl.className = "bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg";
+
+    document.getElementById('tab-console').click();
+};
+
+/* -------------------------
+   Anti-cheat
+   ------------------------- */
+document.addEventListener("visibilitychange", () => {
+    if (isExamActive && !isDisqualified) {
+        if (document.hidden) startCheatTimer(); else stopCheatTimer();
+    }
+});
+
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && isExamActive && !isDisqualified) {
+        alert("⚠️ WARNING: You have exited full screen.");
+    }
+});
+
+function startCheatTimer() {
+    if (cheatTimer) return;
+    document.getElementById('antiCheatModal').classList.remove('hidden');
+    cheatCountdown = 10;
+    document.getElementById('cheatCountdownDisplay').innerText = cheatCountdown;
+    cheatTimer = setInterval(() => {
+        cheatCountdown--;
+        document.getElementById('cheatCountdownDisplay').innerText = cheatCountdown;
+        if (cheatCountdown <= 0) { clearInterval(cheatTimer); disqualifyStudent(); }
+    }, 1000);
+}
+
+function stopCheatTimer() {
+    if (cheatTimer) { clearInterval(cheatTimer); cheatTimer = null; }
+    document.getElementById('antiCheatModal').classList.add('hidden');
+}
+
+async function disqualifyStudent() {
+    isDisqualified = true;
+    if (activeExamRoomId && activeExamQuestionId) {
+        const code = editorView.state.doc.toString();
+        const lang = document.getElementById('language').value;
+        try {
+            await fetch('/api/submissions/submit/', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                body: JSON.stringify({ code, language: lang, user_input: "DISQUALIFIED_AUTO_SUBMIT", room_id: activeExamRoomId, question_id: activeExamQuestionId })
+            });
+        } catch (e) { }
+    }
+    document.getElementById('antiCheatModal').classList.add('hidden');
+    document.getElementById('disqualifiedModal').classList.remove('hidden');
+    editorView.dispatch({ effects: EditorView.editable.of(false) });
+    document.getElementById('runBtn').disabled = true;
+    clearExamSession();
+}
+
+/* -------------------------
+   Logout & Mode Switchers
+   ------------------------- */
+document.getElementById('logoutBtn').onclick = () => { localStorage.clear(); window.location.href = '/login/'; };
+
+function switchToPractice() {
+    currentMode = "practice";
+    isExamActive = false;
+    updateSubmitVisibility();
+    editorView.dispatch({ effects: EditorView.editable.of(true) });
+    document.getElementById('runBtn').disabled = false;
+    document.getElementById('tab-console').click();
+    document.getElementById('examQuestionsList').innerHTML = '';
+    document.getElementById('examQuestionViewer').innerHTML = '<p class="text-gray-400 italic text-center mt-10">Select a question from the left panel to view its details.</p>';
+}
+
+function switchToExam() {
+    currentMode = "exam";
+    updateSubmitVisibility();
+    isExamActive = true;
+}
+
+// 🟢 BOOTSTRAP APP
+updateSubmitVisibility();
+resumeActiveExam();
+
+</script>
 </body>
 </html>

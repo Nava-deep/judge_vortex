@@ -1,25 +1,25 @@
 import json
 import random
+import logging
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
+from rest_framework import permissions, status, generics
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
-from rest_framework import status, generics
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
+from rest_framework.authentication import SessionAuthentication, TokenAuthentication
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from kafka import KafkaProducer
 from rest_framework import serializers
-import logging
+from django.views.decorators.csrf import csrf_exempt
 
-from .models import Submission, UserProfile, ExamRoom, ExamQuestion, RoomParticipant
-from .serializers import (
-    SubmissionSerializer, ExamRoomSerializer, 
-    ExamQuestionSerializer, RoomParticipantSerializer
-)
+from .models import *
+from .serializers import *
 from .throttles import DynamicQueueThrottle
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,13 @@ logger = logging.getLogger(__name__)
 # 1. AUTHENTICATION ENDPOINTS
 # ==========================================
 
+class CsrfExemptSessionAuthentication(SessionAuthentication):
+    def enforce_csrf(self, request):
+        return  # This effectively disables the CSRF check for this class
+
+@csrf_exempt
 @api_view(['POST'])
+@authentication_classes([])
 @permission_classes([AllowAny])
 def register_view(request):
     username = request.data.get('username')
@@ -52,8 +58,9 @@ def register_view(request):
         'message': 'Account created successfully'
     }, status=status.HTTP_201_CREATED)
 
+@csrf_exempt
 @api_view(['POST'])
-@authentication_classes([])
+@authentication_classes([CsrfExemptSessionAuthentication, TokenAuthentication])
 @permission_classes([AllowAny])
 def login_view(request):
     username = request.data.get('username')
@@ -116,6 +123,96 @@ class ExamQuestionListCreateView(generics.ListCreateAPIView):
             raise serializers.ValidationError("Room not found or you don't have permission.")
 
 
+class RoomParticipantListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id):
+        room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
+        # select_related makes it highly efficient to grab the connected User model
+        participants = RoomParticipant.objects.filter(room=room).select_related('student')
+        
+        data = []
+        for p in participants:
+            data.append({
+                "student_id": p.student.id,
+                "username": p.student.username, # 🟢 Grabs the actual string name!
+                "joined_at": p.joined_at.isoformat() if p.joined_at else None
+            })
+        return Response(data)
+
+class RoomSubmissionsListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id):
+        room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
+        submissions = Submission.objects.filter(room=room).select_related('user').order_by('-submitted_at')
+        
+        data = []
+        for sub in submissions:
+            data.append({
+                "id": sub.id,
+                "student_name": sub.user.username, # 🟢 Grabs the actual string name!
+                "status": sub.status,
+                "total_score": sub.awarded_marks,  # Ensures the score maps to the frontend
+                "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None
+            })
+        return Response(data)
+
+class RoomQuestionDeleteView(APIView):
+    def delete(self, request, room_id, q_id):
+        question = get_object_or_404(ExamQuestion, id=q_id, room_id=room_id, room__teacher=request.user)
+        question.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class RoomDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        room = get_object_or_404(ExamRoom, pk=pk, teacher=request.user)
+        serializer = ExamRoomSerializer(room)
+        return Response(serializer.data)
+
+    def delete(self, request, pk):
+        # Security: Only the teacher who created the room can delete it
+        room = get_object_or_404(ExamRoom, pk=pk, teacher=request.user)
+        room.delete()
+        return Response(
+            {"message": "Exam Room and all related data deleted successfully."}, 
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+class RoomParticipantDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, room_id, student_id):
+        # 1. Verify the teacher owns this room
+        room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
+        
+        # 2. Find the participation record and delete it
+        participant = get_object_or_404(RoomParticipant, room=room, student_id=student_id)
+        participant.delete()
+        
+        # 3. Delete their submissions for this room
+        Submission.objects.filter(room=room, user_id=student_id).delete()
+
+        # 🟢 4. Broadcast an INSTANT KICK event via WebSockets to the student
+        try:
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f'user_{student_id}',
+                {
+                    'type': 'send_submission_update', 
+                    'data': {
+                        'action': 'KICKED'
+                    }
+                }
+            )
+        except Exception as ws_error:
+            logger.error(f"WebSocket Kick Broadcast Failed: {ws_error}")
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 # ==========================================
 # 3. STUDENT ENROLLMENT ENDPOINT
 # ==========================================
@@ -130,6 +227,17 @@ def join_room_view(request):
         room = ExamRoom.objects.get(room_code=room_code, is_active=True)
     except ExamRoom.DoesNotExist:
         return Response({'error': 'Invalid or inactive room code.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # 🟢 Allow resuming the exam if they reload the page
+    participant = RoomParticipant.objects.filter(room=room, student=request.user).first()
+    if participant:
+        assigned_qs = participant.assigned_questions.all()
+        return Response({
+            'message': 'Resumed room successfully!',
+            'room_title': room.title,
+            'deadline': room.join_deadline.isoformat(), 
+            'assigned_questions': ExamQuestionSerializer(assigned_qs, many=True).data
+        }, status=status.HTTP_200_OK)
 
     # Check the strict deadline!
     if timezone.now() > room.join_deadline:
@@ -153,12 +261,13 @@ def join_room_view(request):
     return Response({
         'message': 'Successfully joined room!',
         'room_title': room.title,
+        'deadline': room.join_deadline.isoformat(), 
         'assigned_questions': ExamQuestionSerializer(assigned_qs, many=True).data
     }, status=status.HTTP_201_CREATED)
 
 
 # ==========================================
-# 4. SUBMISSION ENDPOINTS (Unchanged)
+# 4. SUBMISSION ENDPOINTS
 # ==========================================
 
 class SubmissionCreateView(generics.CreateAPIView):
@@ -172,6 +281,7 @@ class SubmissionCreateView(generics.CreateAPIView):
         user_custom_input = self.request.data.get('user_input', "")
         room_id = self.request.data.get('room_id')
         question_id = self.request.data.get('question_id')
+        
         if room_id:
             is_participant = RoomParticipant.objects.filter(
                 room_id=room_id, 
@@ -182,6 +292,12 @@ class SubmissionCreateView(generics.CreateAPIView):
                 raise serializers.ValidationError({
                     "error": "Access Denied. You are not a registered participant of this exam room."
                 })
+
+        # 🟢 Distinguish between "Run Test" and "Final Submit"
+        if question_id:
+            # If there is a question ID, it's a final submit. Override the stdin with hidden cases.
+            question = get_object_or_404(ExamQuestion, id=question_id)
+            user_custom_input = question.testcase_input
 
         # Save the submission to the DB
         submission = serializer.save(
@@ -275,26 +391,3 @@ class SubmissionDeleteView(generics.DestroyAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user)
-    
-class RoomParticipantListView(generics.ListDestroyAPIView):
-    """Allows teachers to see all students in a room and delete (kick) them."""
-    serializer_class = RoomParticipantSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        room_id = self.kwargs['room_id']
-        # Ensure only the teacher of the room can see/delete participants
-        return RoomParticipant.objects.filter(room_id=room_id, room__teacher=self.request.user)
-
-class RoomSubmissionsListView(generics.ListAPIView):
-    """Allows teachers to see all code submissions made within their room."""
-    serializer_class = SubmissionSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        room_id = self.kwargs['room_id']
-        # Security: Ensure the teacher requesting the list actually owns the room
-        return Submission.objects.filter(
-            room_id=room_id, 
-            room__teacher=self.request.user
-        ).order_by('-submitted_at')
