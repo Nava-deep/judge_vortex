@@ -21,7 +21,6 @@ LANG_CONFIG = {
     
     # JVM / Bytecode Languages
     "java": ("Main.java", ["javac", "Main.java"], ["java", "Main"]),
-    "scala": ("Main.scala", ["scalac", "Main.scala"], ["scala", "Main"]),
     
     # Transpiled / Special Runtimes
     "typescript": ("main.ts", ["npx", "tsc", "main.ts", "--outFile", "solution.js", "--target", "es6", "--lib", "es6,dom"], ["node", "solution.js"]),

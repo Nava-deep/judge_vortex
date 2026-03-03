@@ -1,43 +1,40 @@
 #!/bin/bash
 
 echo "--------------------------------------------------------"
-echo "IGNITING JUDGE VORTEX (NATIVE ENGINE)..."
+echo "🌪️ INSTALLING ALL 15 LANGUAGES FOR JUDGE VORTEX..."
 echo "--------------------------------------------------------"
 
-# 1. CLEANUP ORPHANS
-echo "Cleaning up local processes..."
-pkill -f "executor_service/main.py" 2>/dev/null
-pkill -f "manage.py runserver" 2>/dev/null
+# 1. C, C++, and Swift (Apple Command Line Tools)
+echo "Installing Apple Native Compilers (C, C++, Swift)..."
+xcode-select --install 2>/dev/null || echo "Apple Command Line Tools already installed."
 
-# 2. NETWORK PREP
-echo "Preparing isolated bridge network..."
-docker network inspect vortex-bridge >/dev/null 2>&1 || docker network create vortex-bridge
+# 2. Homebrew (The Mac Package Manager)
+# if ! command -v brew &> /dev/null; then
+#     echo "Installing Homebrew..."
+#     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+# else
+#     echo "Homebrew found. Updating..."
+#     brew update
+# fi
 
-# 3. START INFRASTRUCTURE (Kafka, Redis, Grafana, etc.)
-echo "Launching Core & Monitoring Stacks..."
-cd infrastructure
-docker-compose -p vortex-core up -d --remove-orphans
-docker-compose -f docker-compose.monitor.yml -p vortex-monitor up -d --remove-orphans
-cd ..
+# 3. Install the Exact Versions Needed
+echo "Downloading core languages via Homebrew (This will take a few minutes)..."
+brew install python@3.11
+brew install node@18
+brew install openjdk@17x
+brew install ruby@3.2
+brew install php@8.2
+brew install go@1.21
+brew install rust
+brew install ghc           # Haskell compiler
+brew install scala         # Scala compiler
+brew install sqlite        # SQL Database engine
+brew install --cask dotnet-sdk # C# (.NET 8.0)
 
-# 4. DATABASE SYNC & RATE LIMIT RESET
-echo "Syncing Database Migrations..."
-python3 manage.py makemigrations > /dev/null
-python3 manage.py migrate > /dev/null
-
-echo "Resetting user rate-limit history in Redis..."
-docker exec vortex-redis redis-cli FLUSHALL > /dev/null 2>&1
-
-# 5. SERVICE BOOT
-echo "Starting Native Executor Sandbox..."
-sleep 4 # Give Kafka/Redis a moment to settle
-python3 executor_service/main.py &
+# 4. TypeScript (Requires Node/NPM to be installed first)
+echo "Installing TypeScript globally..."
+/opt/homebrew/opt/node@18/bin/npm install -g typescript 2>/dev/null || npm install -g typescript
 
 echo "--------------------------------------------------------"
-echo "JUDGE VORTEX IS ONLINE"
-echo "Workspace:  http://127.0.0.1:53562"
-echo "Grafana:    http://localhost:3000"
-echo "Prometheus: http://localhost:9090"
+echo "✅ ALL COMPILERS AND RUNTIMES INSTALLED!"
 echo "--------------------------------------------------------"
-
-python3 manage.py runserver 53562
