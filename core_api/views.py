@@ -1,4 +1,6 @@
 import json
+import random
+from django.utils import timezone
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
@@ -10,23 +12,27 @@ from rest_framework.views import APIView
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from kafka import KafkaProducer
+from rest_framework import serializers
 import logging
 
-# 🟢 IMPORT THE NEW MODELS
-from .models import Submission, UserProfile, ExamRoom, ExamQuestion
-from .serializers import SubmissionSerializer
+from .models import Submission, UserProfile, ExamRoom, ExamQuestion, RoomParticipant
+from .serializers import (
+    SubmissionSerializer, ExamRoomSerializer, 
+    ExamQuestionSerializer, RoomParticipantSerializer
+)
 from .throttles import DynamicQueueThrottle
 
 logger = logging.getLogger(__name__)
 
-# --- Authentication Endpoints ---
+# ==========================================
+# 1. AUTHENTICATION ENDPOINTS
+# ==========================================
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_view(request):
     username = request.data.get('username')
     password = request.data.get('password')
-    # 🟢 Feature 4: Catch the teacher checkbox (Defaults to Student if missing)
     is_teacher = request.data.get('is_teacher', False)
 
     if not username or not password:
@@ -35,22 +41,16 @@ def register_view(request):
     if User.objects.filter(username=username).exists():
         return Response({'error': 'Username is already taken.'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 1. Create the User account
     user = User.objects.create_user(username=username, password=password)
-    
-    # 2. 🟢 Create the Profile and lock in their Role
     UserProfile.objects.create(user=user, is_teacher=is_teacher)
-    
-    # 3. Generate Auth Token
     token, _ = Token.objects.get_or_create(user=user)
     
     return Response({
         'token': token.key, 
         'user_id': user.id,
-        'is_teacher': is_teacher, # 🟢 Tell frontend where to route them
+        'is_teacher': is_teacher,
         'message': 'Account created successfully'
     }, status=status.HTTP_201_CREATED)
-
 
 @api_view(['POST'])
 @authentication_classes([])
@@ -62,14 +62,12 @@ def login_view(request):
     
     if user is not None:
         token, _ = Token.objects.get_or_create(user=user)
-        
-        # 🟢 Safely check their role so the frontend knows if they are a Teacher or Student
         profile, _ = UserProfile.objects.get_or_create(user=user)
         
         return Response({
             'token': token.key, 
             'user_id': user.id, 
-            'is_teacher': profile.is_teacher, # 🟢 Crucial for UI routing
+            'is_teacher': profile.is_teacher,
             'message': 'Login successful'
         }, status=status.HTTP_200_OK)
         
@@ -81,10 +79,89 @@ def logout_view(request):
     request.user.auth_token.delete()
     return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
 
-# --- Submission Endpoints ---
+
+# ==========================================
+# 2. TEACHER EXAM MANAGEMENT ENDPOINTS
+# ==========================================
+
+class ExamRoomListCreateView(generics.ListCreateAPIView):
+    """Allows teachers to create rooms and view their active rooms."""
+    serializer_class = ExamRoomSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Only return rooms created by this specific teacher
+        return ExamRoom.objects.filter(teacher=self.request.user).order_by('-created_at')
+
+    def perform_create(self, serializer):
+        # Automatically set the creator to the logged-in teacher
+        serializer.save(teacher=self.request.user)
+
+
+class ExamQuestionListCreateView(generics.ListCreateAPIView):
+    """Allows teachers to add questions to a specific room."""
+    serializer_class = ExamQuestionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        room_id = self.kwargs['room_id']
+        return ExamQuestion.objects.filter(room_id=room_id, room__teacher=self.request.user)
+
+    def perform_create(self, serializer):
+        room_id = self.kwargs['room_id']
+        try:
+            room = ExamRoom.objects.get(id=room_id, teacher=self.request.user)
+            serializer.save(room=room)
+        except ExamRoom.DoesNotExist:
+            raise serializers.ValidationError("Room not found or you don't have permission.")
+
+
+# ==========================================
+# 3. STUDENT ENROLLMENT ENDPOINT
+# ==========================================
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def join_room_view(request):
+    """Allows a student to join a room via a code and randomly assigns questions."""
+    room_code = request.data.get('room_code')
+    
+    try:
+        room = ExamRoom.objects.get(room_code=room_code, is_active=True)
+    except ExamRoom.DoesNotExist:
+        return Response({'error': 'Invalid or inactive room code.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Check the strict deadline!
+    if timezone.now() > room.join_deadline:
+        return Response({'error': 'The deadline to join this exam has passed.'}, status=status.HTTP_403_FORBIDDEN)
+
+    # Check if they are already in the room
+    if RoomParticipant.objects.filter(room=room, student=request.user).exists():
+        return Response({'error': 'You have already joined this room.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Generate the random subset of questions
+    all_questions = list(room.questions.all())
+    if len(all_questions) < room.questions_to_assign:
+        return Response({'error': 'The teacher has not added enough questions to the pool yet.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    assigned_qs = random.sample(all_questions, room.questions_to_assign)
+
+    # Save the participant and their assigned questions
+    participant = RoomParticipant.objects.create(room=room, student=request.user)
+    participant.assigned_questions.set(assigned_qs)
+
+    return Response({
+        'message': 'Successfully joined room!',
+        'room_title': room.title,
+        'assigned_questions': ExamQuestionSerializer(assigned_qs, many=True).data
+    }, status=status.HTTP_201_CREATED)
+
+
+# ==========================================
+# 4. SUBMISSION ENDPOINTS (Unchanged)
+# ==========================================
 
 class SubmissionCreateView(generics.CreateAPIView):
-    """Accepts code and manual input, then pushes to Kafka."""
     throttle_classes = [DynamicQueueThrottle]
     queryset = Submission.objects.all()
     serializer_class = SubmissionSerializer
@@ -92,25 +169,20 @@ class SubmissionCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         user_custom_input = self.request.data.get('user_input', "")
-        
-        # 🟢 Feature 2: Catch Room and Question IDs if this is an Exam submission
         room_id = self.request.data.get('room_id')
         question_id = self.request.data.get('question_id')
         
-        # Save the submission to the DB linked to the user (and room/question if present)
         submission = serializer.save(
             user=self.request.user,
             room_id=room_id,
             question_id=question_id
         )
         
-        # Connect to Kafka
         producer = KafkaProducer(
             bootstrap_servers=['localhost:9092'],
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
         
-        # Build the message for the Executor
         message = {
             'submission_id': submission.id,
             'code': submission.code,
@@ -119,26 +191,20 @@ class SubmissionCreateView(generics.CreateAPIView):
             'time_limit_ms': self.request.data.get('time_limit_ms', 10000), 
         }
         
-        # Send it to the queue!
         producer.send('code_submissions', message)
         producer.flush()
 
-
 class SubmissionUpdateView(APIView):
-    """Endpoint for the Executor to update submission results."""
     permission_classes = [] 
 
     def patch(self, request, pk):
         try:
             submission = Submission.objects.get(pk=pk)
-            
-            # 1. Update the Database
             submission.status = request.data.get('status', submission.status)
             submission.output = request.data.get('output', submission.output)
             submission.execution_time_ms = request.data.get('execution_time_ms', submission.execution_time_ms)
             submission.save()
 
-            # 2. Safely Broadcast to WebSockets
             try:
                 channel_layer = get_channel_layer()
                 async_to_sync(channel_layer.group_send)(
@@ -174,3 +240,13 @@ class SubmissionDeleteView(generics.DestroyAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user)
+    
+class RoomParticipantListView(generics.ListDestroyAPIView):
+    """Allows teachers to see all students in a room and delete (kick) them."""
+    serializer_class = RoomParticipantSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        room_id = self.kwargs['room_id']
+        # Ensure only the teacher of the room can see/delete participants
+        return RoomParticipant.objects.filter(room_id=room_id, room__teacher=self.request.user)
