@@ -105,9 +105,15 @@
         <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-2xl">
             <h2 class="text-2xl font-bold mb-6 text-gray-800">Add Question to Pool</h2>
             <form id="addQuestionForm" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Question Title</label>
-                    <input type="text" id="qTitle" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g., Two Sum" required>
+                <div class="flex space-x-4">
+                    <div class="flex-[3]">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Question Title</label>
+                        <input type="text" id="qTitle" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g., Two Sum" required>
+                    </div>
+                    <div class="flex-1">
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Total Marks</label>
+                        <input type="number" id="qMarks" class="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" value="10" min="1" required>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-sm font-bold text-gray-700 mb-1">Description / Prompt</label>
@@ -187,7 +193,10 @@
 
             questions.forEach(q => {
                 qList.innerHTML += `
-                    <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <div class="bg-white p-4 rounded-lg border border-gray-200 shadow-sm relative">
+                        <span class="absolute top-4 right-4 bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded border border-blue-200">
+                            ${q.total_marks || 0} PTS
+                        </span>
                         <h4 class="font-bold text-blue-600">${q.title}</h4>
                         <p class="text-sm text-gray-600 mt-1">${q.description.substring(0, 100)}...</p>
                         <div class="mt-2 text-[10px] text-gray-400 font-mono">Expected: ${q.expected_output}</div>
@@ -224,7 +233,8 @@
                 title: document.getElementById('qTitle').value,
                 description: document.getElementById('qDesc').value,
                 testcase_input: document.getElementById('qInput').value,
-                expected_output: document.getElementById('qOutput').value
+                expected_output: document.getElementById('qOutput').value,
+                total_marks: parseInt(document.getElementById('qMarks').value) // 🟢 NEW: Sent to API
             };
 
             const res = await fetch(`/api/rooms/${currentRoomId}/questions/`, {
@@ -237,6 +247,8 @@
                 document.getElementById('addQuestionModal').classList.add('hidden');
                 fetchQuestions(currentRoomId);
                 fetchRooms(); // Refresh sidebar count
+            } else {
+                alert("Failed to save question. Check if marks are valid.");
             }
         };
 

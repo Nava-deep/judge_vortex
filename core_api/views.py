@@ -213,11 +213,32 @@ class SubmissionUpdateView(APIView):
     def patch(self, request, pk):
         try:
             submission = Submission.objects.get(pk=pk)
-            submission.status = request.data.get('status', submission.status)
-            submission.output = request.data.get('output', submission.output)
+            
+            executor_status = request.data.get('status', submission.status)
+            executor_output = request.data.get('output', submission.output)
+            
+            final_status = executor_status
+            awarded_marks = 0
+            
+            if executor_status == "SUCCESS" and submission.question:
+                expected = submission.question.expected_output.strip()
+                actual = executor_output.strip() if executor_output else ""
+                
+                if expected == actual:
+                    final_status = "PASSED"
+                    awarded_marks = submission.question.total_marks
+                else:
+                    final_status = "WRONG_ANSWER"
+                    awarded_marks = 0
+
+            # Update the Database
+            submission.status = final_status
+            submission.output = executor_output
+            submission.awarded_marks = awarded_marks
             submission.execution_time_ms = request.data.get('execution_time_ms', submission.execution_time_ms)
             submission.save()
 
+            # Broadcast to WebSockets
             try:
                 channel_layer = get_channel_layer()
                 async_to_sync(channel_layer.group_send)(
@@ -226,14 +247,15 @@ class SubmissionUpdateView(APIView):
                         'type': 'send_submission_update',
                         'data': {
                             'submission_id': submission.id,
-                            'status': submission.status,
+                            'status': submission.status, 
                             'output': submission.output,
-                            'execution_time': submission.execution_time_ms
+                            'execution_time': submission.execution_time_ms,
+                            'awarded_marks': submission.awarded_marks
                         }
                     }
                 )
             except Exception as ws_error:
-                logger.error(f"WebSocket Broadcast Failed for Sub {pk}: {ws_error}")
+                logger.error(f"WebSocket Broadcast Failed: {ws_error}")
 
             return Response({"message": "Updated successfully"}, status=status.HTTP_200_OK)
 
@@ -263,10 +285,6 @@ class RoomParticipantListView(generics.ListDestroyAPIView):
         room_id = self.kwargs['room_id']
         # Ensure only the teacher of the room can see/delete participants
         return RoomParticipant.objects.filter(room_id=room_id, room__teacher=self.request.user)
-
-# ==========================================
-# 6. TEACHER: VIEW ROOM SUBMISSIONS
-# ==========================================
 
 class RoomSubmissionsListView(generics.ListAPIView):
     """Allows teachers to see all code submissions made within their room."""

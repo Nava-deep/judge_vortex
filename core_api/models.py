@@ -37,7 +37,7 @@ class ExamQuestion(models.Model):
     room = models.ForeignKey(ExamRoom, on_delete=models.CASCADE, related_name='questions')
     title = models.CharField(max_length=100)
     description = models.TextField()
-    
+    total_marks = models.IntegerField(default=10)
     # Test cases for automated grading
     testcase_input = models.TextField(blank=True, default="")
     expected_output = models.TextField()
@@ -81,7 +81,7 @@ class Submission(models.Model):
     # 🟢 NEW: Link the submission to the specific Exam and Question!
     room = models.ForeignKey(ExamRoom, on_delete=models.CASCADE, related_name='submissions', null=True, blank=True)
     question = models.ForeignKey(ExamQuestion, on_delete=models.CASCADE, related_name='submissions', null=True, blank=True)
-    
+    awarded_marks = models.IntegerField(default=0)
     output = models.TextField(null=True, blank=True)
     code = models.TextField()
     language = models.CharField(max_length=50)

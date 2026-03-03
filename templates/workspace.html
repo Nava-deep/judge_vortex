@@ -141,6 +141,25 @@
             </div>
         </div>
     </div>
+
+    <div id="antiCheatModal" class="fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center hidden z-[100] backdrop-blur-md">
+        <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md text-center border-4 border-red-500 transform scale-105 transition-transform">
+            <svg class="w-20 h-20 text-red-600 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+            <h2 class="text-3xl font-black text-gray-900 mb-2">TAB SWITCH DETECTED!</h2>
+            <p class="text-gray-600 font-medium mb-6">You have left the exam environment. Return immediately or your exam will be automatically locked.</p>
+            <div class="text-6xl font-black text-red-600 font-mono mb-4" id="cheatCountdownDisplay">10</div>
+            <p class="text-sm text-red-500 font-bold uppercase tracking-widest animate-pulse">Seconds Remaining</p>
+        </div>
+    </div>
+
+    <div id="disqualifiedModal" class="fixed inset-0 bg-gray-900 flex items-center justify-center hidden z-[110]">
+        <div class="text-center">
+            <h1 class="text-6xl font-black text-red-500 mb-4 tracking-tight">EXAM LOCKED</h1>
+            <p class="text-xl text-gray-400 max-w-lg mx-auto">You failed to return to the exam window in time. Your session has been terminated and your workspace is locked.</p>
+            <button onclick="window.location.href='/workspace/'" class="mt-8 px-6 py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-700 transition">Return to Practice Mode</button>
+        </div>
+    </div>
+
     <div id="joinRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
         <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200">
             <h2 class="text-2xl font-bold mb-4 text-gray-800">Join Exam Room</h2>
@@ -430,7 +449,9 @@
 
                 if (res.ok) {
                     document.getElementById('joinRoomModal').classList.add('hidden');
-                    tabExam.classList.remove('hidden'); // Un-hide the tab
+                    tabExam.classList.remove('hidden'); 
+                    isExamActive = true;
+                    try { document.documentElement.requestFullscreen(); } catch(err) { console.log("Fullscreen blocked."); }
                     
                     // Populate the questions
                     document.getElementById('examTitle').innerText = `Exam: ${data.room_title}`;
@@ -478,6 +499,76 @@
             
             alert(`Your code executions will now be submitted against this question!`);
         };
+
+        // ==========================================
+        // Anti-Cheat
+        // ==========================================
+        let isExamActive = false;
+        let isDisqualified = false;
+        let cheatTimer = null;
+        let cheatCountdown = 10;
+
+        // 1. Listen for Tab Switching or Minimizing
+        document.addEventListener("visibilitychange", () => {
+            if (isExamActive && !isDisqualified) {
+                if (document.hidden) {
+                    startCheatTimer(); // They left the tab
+                } else {
+                    stopCheatTimer();  // They came back
+                }
+            }
+        });
+
+        // 2. Listen for exiting Fullscreen
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && isExamActive && !isDisqualified) {
+                alert("⚠️ WARNING: You have exited full screen. Please stay focused on the exam.");
+            }
+        });
+
+        function startCheatTimer() {
+            if (cheatTimer) return; // Timer already running
+            
+            document.getElementById('antiCheatModal').classList.remove('hidden');
+            cheatCountdown = 10;
+            document.getElementById('cheatCountdownDisplay').innerText = cheatCountdown;
+
+            cheatTimer = setInterval(() => {
+                cheatCountdown--;
+                document.getElementById('cheatCountdownDisplay').innerText = cheatCountdown;
+                
+                if (cheatCountdown <= 0) {
+                    clearInterval(cheatTimer);
+                    disqualifyStudent();
+                }
+            }, 1000);
+        }
+
+        function stopCheatTimer() {
+            if (cheatTimer) {
+                clearInterval(cheatTimer);
+                cheatTimer = null;
+            }
+            document.getElementById('antiCheatModal').classList.add('hidden');
+        }
+
+        function disqualifyStudent() {
+            isDisqualified = true;
+            activeExamRoomId = null;
+            activeExamQuestionId = null;
+            isExamActive = false;
+            
+            // Hide warning, show locked screen
+            document.getElementById('antiCheatModal').classList.add('hidden');
+            document.getElementById('disqualifiedModal').classList.remove('hidden');
+            
+            // Disable the Run button and Editor
+            const runBtn = document.getElementById('runBtn');
+            runBtn.disabled = true;
+            runBtn.className = "bg-gray-600 text-gray-400 px-5 py-2 rounded-lg text-sm font-bold shadow-md cursor-not-allowed flex items-center";
+            runBtn.innerHTML = "LOCKED";
+        }
+
     </script>
 </body>
 </html>

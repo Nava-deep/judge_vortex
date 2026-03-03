@@ -6,23 +6,20 @@ from .models import Submission, ExamRoom, ExamQuestion, RoomParticipant
 class ExamQuestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExamQuestion
-        fields = ['id', 'room', 'title', 'description', 'testcase_input', 'expected_output']
-        read_only_fields = ['room'] # The view will automatically link the room
+        fields = ['id', 'room', 'title', 'description', 'testcase_input', 'expected_output', 'total_marks']
+        read_only_fields = ['room']
 
 # --- 2. Room Serializer ---
-class ExamRoomSerializer(serializers.ModelSerializer):
-    teacher_username = serializers.ReadOnlyField(source='teacher.username')
-    # Automatically count how many questions the teacher has added to the pool
-    total_questions = serializers.SerializerMethodField()
-    
+class SubmissionSerializer(serializers.ModelSerializer):
+    username = serializers.ReadOnlyField(source='user.username')
     class Meta:
-        model = ExamRoom
+        model = Submission
         fields = [
-            'id', 'teacher', 'teacher_username', 'room_code', 'title', 
-            'join_deadline', 'questions_to_assign', 'is_active', 
-            'created_at', 'total_questions'
+            'id', 'user', 'username', 'room', 'question', 
+            'code', 'language', 'status', 'output', 
+            'execution_time_ms', 'submitted_at', 'awarded_marks'
         ]
-        read_only_fields = ['teacher', 'room_code', 'is_active', 'created_at']
+        read_only_fields = ['status', 'output', 'execution_time_ms', 'user', 'awarded_marks']
 
     def get_total_questions(self, obj):
         return obj.questions.count()
