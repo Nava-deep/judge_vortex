@@ -47,9 +47,7 @@ async def run_grade_task(submission_data):
         print(f"Processing ID: {sub_id} (Slot Acquired)")
         
         try:
-            # We run the synchronous grade_submission in a thread pool 
-            # so it doesn't block other tasks from starting.
-            await asyncio.to_thread(grade_submission, submission_data)
+            await grade_submission(submission_data)
             print(f"Finished processing ID: {sub_id} (Slot Released)")
         except Exception as e:pass
 
