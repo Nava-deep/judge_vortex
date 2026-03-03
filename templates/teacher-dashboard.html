@@ -35,7 +35,7 @@
             </div>
             
             <div id="roomList" class="flex-1 overflow-y-auto divide-y divide-gray-100 font-medium">
-                <div class="p-8 text-center text-sm text-gray-400 italic">Loading rooms...</div>
+                <div class="p-8 text-center text-sm text-gray-400 italic">No rooms...</div>
             </div>
         </div>
 
@@ -60,7 +60,8 @@
                             <span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-md border border-blue-200 font-mono font-bold">Code: <span id="roomCodeDisplay">XXXXXX</span></span>
                             <span class="text-gray-500 flex items-center">
                                 <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                Join Deadline: <span id="roomDeadlineDisplay" class="font-bold">...</span>
+                                <span class="mr-3">Starts: <span id="roomStartDisplay" class="font-bold text-gray-800">...</span></span>
+                                <span>Deadline: <span id="roomDeadlineDisplay" class="font-bold text-red-600">...</span></span>
                             </span>
                         </div>
                     </div>
@@ -135,22 +136,29 @@
     <div id="createRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
         <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-100">
             <h2 class="text-2xl font-black mb-6 text-gray-800 tracking-tight">Create Exam Room</h2>
-            <form id="createRoomForm" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">Room Title</label>
-                    <input type="text" id="roomTitle" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
+            <form id="createRoomForm">
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Room Title</label>
+                    <input type="text" id="createRoomTitle" class="w-full border p-3 rounded-lg" required>
                 </div>
-                <div>
-                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">Join Deadline</label>
-                    <input type="datetime-local" id="roomDeadline" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" required>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Questions to Assign</label>
+                    <input type="number" id="createRoomQuestions" class="w-full border p-3 rounded-lg" min="1" value="3" required>
                 </div>
-                <div>
-                    <label class="block text-xs font-black text-gray-500 uppercase mb-1">Questions To Assign</label>
-                    <input type="number" id="roomQs" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" min="1" value="3" required>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Exam Start Time</label>
+                    <input type="datetime-local" id="createRoomStartTime" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500" required>
                 </div>
-                <div class="flex justify-end space-x-3 mt-8">
-                    <button type="button" onclick="document.getElementById('createRoomModal').classList.add('hidden')" class="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-xl">Cancel</button>
-                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-black rounded-xl hover:bg-blue-700 shadow-lg">Create Room</button>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Exam End Time (Deadline)</label>
+                    <input type="datetime-local" id="createRoomEndTime" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="document.getElementById('createRoomModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg">Create Room</button>
                 </div>
             </form>
         </div>
@@ -222,8 +230,8 @@
                     div.onclick = () => selectRoom(room);
                     div.innerHTML = `
                         <div class="flex-1">
-                            <div class="font-black text-gray-800 group-hover:text-blue-700 transition">${escapeHtml(room.title)}</div>
-                            <div class="text-[10px] text-gray-500 font-mono mt-1">CODE: ${escapeHtml(room.room_code)} | ${escapeHtml(room.total_questions || 0)} Questions</div>
+                            <div class="font-black text-gray-800 group-hover:text-blue-700 transition text-left">${escapeHtml(room.title)}</div>
+                            <div class="text-[10px] text-gray-500 font-mono mt-1 text-left">CODE: ${escapeHtml(room.room_code)} | ${escapeHtml(room.total_questions || 0)} Questions</div>
                         </div>
                         <button onclick="event.stopPropagation(); deleteRoom(${room.id})" class="text-gray-300 hover:text-red-500 transition ml-2 opacity-0 group-hover:opacity-100" title="Delete Room">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
@@ -259,6 +267,10 @@
             document.getElementById('roomDetailsPanel').classList.remove('hidden');
             document.getElementById('roomTitleDisplay').innerText = room.title;
             document.getElementById('roomCodeDisplay').innerText = room.room_code;
+            
+            // 🟢 DISPLAY UPDATES: Format and show both Start Time and Deadline
+            const startStr = room.start_time ? new Date(room.start_time).toLocaleString() : 'Immediate';
+            document.getElementById('roomStartDisplay').innerText = startStr;
             document.getElementById('roomDeadlineDisplay').innerText = new Date(room.join_deadline).toLocaleString();
             
             fetchQuestions(room.id);
@@ -271,10 +283,11 @@
             const res = await fetch('/api/rooms/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-                body: JSON.stringify({ 
-                    title: document.getElementById('roomTitle').value, 
-                    join_deadline: document.getElementById('roomDeadline').value, 
-                    questions_to_assign: document.getElementById('roomQs').value 
+                body: JSON.stringify({
+                    title: document.getElementById('createRoomTitle').value,
+                    questions_to_assign: document.getElementById('createRoomQuestions').value,
+                    start_time: new Date(document.getElementById('createRoomStartTime').value).toISOString(),
+                    join_deadline: new Date(document.getElementById('createRoomEndTime').value).toISOString()
                 })
             });
             if (res.ok) { 
@@ -300,16 +313,16 @@
                 }
                 questions.forEach(q => {
                     qList.innerHTML += `
-                    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative hover:shadow-md transition">
+                    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative hover:shadow-md transition text-left">
                         <div class="absolute top-4 right-4 flex items-center space-x-2">
                             <span class="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-1 rounded border border-blue-200">${escapeHtml(q.total_marks || 0)} PTS</span>
                             <button onclick="event.stopPropagation(); removeQuestion(${q.id})" class="text-gray-300 hover:text-red-500 transition" title="Remove Question">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
                         </div>
-                        <h4 class="font-black text-gray-800 uppercase text-xs tracking-tight">${escapeHtml(q.title)}</h4>
-                        <p class="text-xs text-gray-500 mt-2 line-clamp-2">${escapeHtml(q.description)}</p>
-                        <div class="mt-4 pt-4 border-t border-gray-50 flex flex-col space-y-1">
+                        <h4 class="font-black text-gray-800 uppercase text-xs tracking-tight text-left">${escapeHtml(q.title)}</h4>
+                        <p class="text-xs text-gray-500 mt-2 line-clamp-2 text-left">${escapeHtml(q.description)}</p>
+                        <div class="mt-4 pt-4 border-t border-gray-50 flex flex-col space-y-1 text-left">
                             <span class="text-[9px] font-black text-gray-400 uppercase">Expected Output</span>
                             <code class="text-[10px] text-blue-600 font-mono bg-blue-50 p-1 rounded block truncate">${escapeHtml(q.expected_output)}</code>
                         </div>
@@ -407,7 +420,7 @@
             }
         }
 
-        // --- 🟢 NEW: AGGREGATED SUBMISSION LEADERBOARD ---
+        // --- AGGREGATED SUBMISSION LEADERBOARD ---
         async function fetchSubmissions(roomId) {
             try {
                 const res = await fetch(`/api/rooms/${roomId}/submissions/`, {
@@ -424,13 +437,11 @@
                     return;
                 }
 
-                // Object to store aggregated data per student
                 const studentStats = {};
 
                 submissions.forEach(sub => {
                     const name = sub.student_name || sub.username || (sub.user && sub.user.username) || 'Unknown Student';
                     
-                    // Initialize the student if not already in the object
                     if (!studentStats[name]) {
                         studentStats[name] = {
                             name: name,
@@ -443,13 +454,11 @@
 
                     const statusRaw = (sub.status || 'PENDING').toString().toUpperCase();
                     
-                    // If this submission passed, count it towards their solved total and add the score
                     if (statusRaw === 'PASSED' || statusRaw === 'ACCEPTED') {
                         studentStats[name].questionsSolved += 1;
                         studentStats[name].totalScore += (sub.total_score || sub.score || sub.marks || 0);
                     }
 
-                    // Keep track of their most recent activity time and status
                     const subTime = new Date(sub.submitted_at || sub.created_at || 0).getTime();
                     if (subTime > studentStats[name].latestTime) {
                         studentStats[name].latestTime = subTime;
@@ -457,13 +466,11 @@
                     }
                 });
 
-                // Convert object to array and sort by most solved, then highest score
                 const leaderboard = Object.values(studentStats).sort((a, b) => {
                     if (b.questionsSolved !== a.questionsSolved) return b.questionsSolved - a.questionsSolved;
                     return b.totalScore - a.totalScore;
                 });
 
-                // Render the aggregated rows
                 leaderboard.forEach(student => {
                     let colorClass = 'text-yellow-600';
                     if (student.latestStatus === 'PASSED' || student.latestStatus === 'ACCEPTED') colorClass = 'text-green-600';

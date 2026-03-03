@@ -59,7 +59,7 @@
         .cm-focused { outline: none !important; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 h-screen flex flex-col font-sans overflow-hidden">
+<body class="bg-gray-50 text-gray-800 h-screen flex flex-col font-sans overflow-hidden relative">
 
 <nav class="bg-white border-b border-gray-200 p-3 flex justify-between items-center z-30 shrink-0 shadow-sm">
     <button id="joinRoomBtn" type="button" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition mr-2 flex items-center">
@@ -109,6 +109,10 @@
     </div>
 </nav>
 
+<div id="fullscreenWarning" class="absolute top-16 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-white font-bold px-6 py-2 rounded-b-lg shadow-lg z-50 transition-transform duration-300 -translate-y-24">
+    ⚠️ WARNING: You have exited full screen.
+</div>
+
 <div class="flex-1 flex overflow-hidden w-full">
 
     <div id="leftPanel" class="flex flex-col min-w-[200px]" style="width: 60%;">
@@ -119,8 +123,8 @@
         <div id="gutterV" class="gutter-v shrink-0 border-y border-gray-200 bg-gray-50"></div>
 
         <div id="inputBottom" class="bg-gray-50 p-3 flex flex-col shrink-0 border-r border-gray-200" style="height: 180px;">
-            <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin) - For Run Test Only</label>
-            <textarea id="customInput" placeholder="Enter custom test cases here to check your code locally..." class="flex-1 w-full bg-white border border-gray-300 rounded p-3 font-mono text-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 box-border resize-none transition shadow-sm"></textarea>
+            <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin)</label>
+            <textarea id="customInput" placeholder="Enter custom test cases here..." class="flex-1 w-full bg-white border border-gray-300 rounded p-3 font-mono text-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 box-border resize-none transition shadow-sm"></textarea>
         </div>
     </div>
 
@@ -135,7 +139,6 @@
 
         <div class="flex-1 relative overflow-hidden">
             <div id="terminal" class="absolute inset-0 p-5 overflow-y-auto font-mono text-sm leading-relaxed block bg-white">
-                <div class="text-gray-400 italic">Ready. Awaiting execution...</div>
             </div>
 
             <div id="historyPanel" class="absolute inset-0 overflow-y-auto hidden bg-white">
@@ -200,6 +203,14 @@
     </div>
 </div>
 
+<div id="kickedModal" class="fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center hidden z-[130] backdrop-blur-md text-center">
+    <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md border-4 border-red-500">
+        <h2 class="text-3xl font-black text-gray-900 mb-2 uppercase">Kicked</h2>
+        <p class="text-gray-600 mb-6">The teacher has removed you from this exam session.</p>
+        <button onclick="window.safeExitRoom()" class="px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-lg">Back to Practice</button>
+    </div>
+</div>
+
 <div id="joinRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
     <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200">
         <h2 class="text-2xl font-bold mb-4 text-gray-800">Join Exam Room</h2>
@@ -214,6 +225,19 @@
                 <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 shadow-md">Join</button>
             </div>
         </form>
+    </div>
+</div>
+
+<div id="waitingRoomOverlay" class="fixed inset-0 bg-gray-900 flex flex-col items-center justify-center hidden z-[500] backdrop-blur-xl">
+    <svg class="w-20 h-20 text-blue-500 animate-spin mb-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+    <h1 class="text-6xl font-black text-white mb-3 tracking-tight uppercase" id="waitingRoomTitle">Exam Room</h1>
+    <p class="text-2xl text-gray-400 mb-10">Proctored by: <span id="waitingRoomTeacher" class="text-blue-400 font-bold"></span></p>
+    <button id="reEnterFullscreenBtn" class="hidden mb-8 px-8 py-4 bg-blue-600 text-white font-black rounded-2xl shadow-2xl hover:bg-blue-700 transition transform hover:scale-105 uppercase tracking-widest">
+        Click to Re-enter Fullscreen & Resume
+    </button>
+    <div class="bg-gray-800 p-10 rounded-3xl border border-gray-700 shadow-2xl text-center min-w-[400px]">
+        <p class="text-sm text-gray-400 uppercase tracking-widest font-bold mb-4">Exam Starts In</p>
+        <div id="waitingRoomTimer" class="text-7xl font-mono font-black text-white tracking-tight">00:00:00</div>
     </div>
 </div>
 
@@ -261,10 +285,13 @@ let isDisqualified = false;
 let activeExamRoomId = null;
 let activeExamQuestionId = null;
 
-// 🟢 EXAM TRACKERS
+// 🟢 EXAM TRACKERS & ANTI-CHEAT VARIABLES
 let totalAssignedQuestions = 0;
 let examDeadlineTime = null;
 let deadlineInterval = null;
+let waitingInterval = null;
+let cheatTimer = null;         // FIXED: Added variable declaration
+let cheatCountdown = 10;       // FIXED: Added variable declaration
 
 /* Boilerplates */
 const boilerplate = {
@@ -314,7 +341,7 @@ const editorView = new EditorView({
             basicSetup,
             keymap.of([indentWithTab]),
             languageConf.of(getLangExtension(initialLang)),
-            EditorView.editable.of(true)
+            EditorView.editable.of(true) // ALWAYS KEEP TRUE globally
         ]
     }),
     parent: document.getElementById('editorContainer')
@@ -374,6 +401,18 @@ function escapeHtml(unsafe) {
       .replace(/'/g, "&#039;");
 }
 
+/* 🟢 BULLETPROOF DATE PARSER */
+function parseSafeDate(dateStr) {
+    if (!dateStr) return new Date().getTime();
+    let t = new Date(dateStr).getTime();
+    if (!isNaN(t)) return t;
+    let cleanStr = dateStr.replace(' ', 'T');
+    if (!cleanStr.endsWith('Z') && !cleanStr.match(/[+\-]\d{2}:?\d{2}$/)) {
+        cleanStr += 'Z';
+    }
+    return new Date(cleanStr).getTime();
+}
+
 /* -------------------------
    WebSocket (robust) & Terminal renderer
    ------------------------- */
@@ -393,23 +432,16 @@ if (socket) {
 
     socket.onmessage = (e) => {
         let payload;
-        try { 
-            payload = JSON.parse(e.data); 
-        } catch (err) { 
-            return; 
-        }
+        try { payload = JSON.parse(e.data); } catch (err) { return; }
 
-        // --- TEACHER CONTROL LOGIC (KICK/CLOSE) ---
-        // Check for common 'kick' or 'action' signals
-        if (payload.type === 'kick_student' || payload.action === 'kick' || payload.type === 'room_closed') {
-            alert(payload.message || "The teacher has removed you from the session.");
-            // If you have a function to exit, call it:
-            if (typeof safeExitRoom === 'function') safeExitRoom();
-            else window.location.reload(); 
+        const action = payload.action || (payload.data && payload.data.action);
+        if (action === 'KICKED') {
+            document.getElementById('kickedModal').classList.remove('hidden');
+            if (deadlineInterval) clearInterval(deadlineInterval);
+            clearExamSession();
             return;
         }
 
-        // --- SUBMISSION RESULTS LOGIC ---
         const candidate = payload.data || payload.result || payload || {};
         const submission = candidate.submission || candidate;
 
@@ -419,10 +451,9 @@ if (socket) {
 
         if (submissionId) {
             terminalEl.innerHTML = `<div class="mb-4 whitespace-pre-wrap font-mono text-gray-800">${escapeHtml(output ?? "")}</div>`;
-            // Map evaluation to Question Card UI
+            
             if (pendingEvaluations.has(submissionId)) {
                 const qid = pendingEvaluations.get(submissionId);
-                // Don't clear 'evaluating' if it's still processing
                 if (status !== 'PENDING' && status !== 'PROCESSING') {
                     applyQuestionVerdict(qid, status);
                     pendingEvaluations.delete(submissionId); 
@@ -464,7 +495,7 @@ function restoreSavedCode(roomId, qId) {
 }
 
 /* -------------------------
-   🟢 SESSION PERSISTENCE (NEW FEATURE)
+   🟢 SESSION PERSISTENCE 
    ------------------------- */
 function saveExamSession(roomCode) {
     localStorage.setItem('vortex_active_room_code', roomCode);
@@ -489,7 +520,6 @@ async function resumeActiveExam() {
         const data = await res.json();
         if (res.ok) {
             renderExamMode(data, savedRoomCode);
-            // Restore verdicts from local storage so cards stay green/red
             const savedVerdicts = JSON.parse(localStorage.getItem('vortex_question_verdicts') || '{}');
             questionVerdicts = new Map(Object.entries(savedVerdicts).map(([k, v]) => [parseInt(k), v]));
             questionVerdicts.forEach((status, qId) => {
@@ -503,21 +533,16 @@ async function resumeActiveExam() {
 
 function renderExamMode(data, code) {
     document.getElementById('joinRoomModal').classList.add('hidden');
-    document.getElementById('tab-exam').classList.remove('hidden');
-
+    activeExamRoomId = data.room_id;
     currentMode = "exam";
     isExamActive = true;
     updateSubmitVisibility();
 
     totalAssignedQuestions = data.assigned_questions.length;
-    if(data.deadline) {
-        startExamDeadlineCountdown(data.deadline);
-    }
-
     document.getElementById('examTitle').innerText = `Exam: ${data.room_title}`;
+    
     const qList = document.getElementById('examQuestionsList');
     qList.innerHTML = '';
-    
     data.assigned_questions.forEach((q, index) => {
         qList.innerHTML += `
             <div id="q-card-${q.id}" class="bg-white border-2 border-gray-200 p-4 rounded-xl shadow-sm relative transition flex flex-col hover:border-blue-300">
@@ -525,7 +550,7 @@ function renderExamMode(data, code) {
                     <span class="bg-gray-100 text-gray-500 text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">Q${index + 1}</span>
                     <span id="q-badge-${q.id}" class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Unattempted</span>
                 </div>
-                <h3 class="font-bold text-gray-800 text-base mb-1 line-clamp-1">${escapeHtml(q.title)}</h3>
+                <h3 class="font-bold text-gray-800 text-base mb-1 line-clamp-1 text-left">${escapeHtml(q.title)}</h3>
                 <p class="text-xs text-gray-500 mb-4 line-clamp-2 flex-1 text-left">${escapeHtml(q.description)}</p>
                 <button id="lock-btn-${q.id}" onclick="window.setActiveQuestion(${q.id}, ${q.room})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-sm">
                     Open Editor
@@ -533,7 +558,26 @@ function renderExamMode(data, code) {
             </div>
         `;
     });
-    tabExam.click();
+
+    setTimeout(() => {
+        document.getElementById('tab-exam').classList.remove('hidden');
+        tabExam.click();
+    }, 100);
+
+    // 🟢 WAITING ROOM CHECK
+    if (data.start_time) {
+        const startTimeMs = parseSafeDate(data.start_time);
+        const nowMs = new Date().getTime();
+
+        if (startTimeMs > nowMs) {
+            showWaitingRoom(data.room_title, data.teacher_name, startTimeMs, data.deadline);
+            return; 
+        }
+    }
+
+    if(data.deadline) {
+        startExamDeadlineCountdown(data.deadline);
+    }
 }
 
 /* -------------------------
@@ -553,18 +597,11 @@ function updateSubmitVisibility() {
 runBtnEl.onclick = async (e) => {
     e.preventDefault();
     
-    if (isExamActive && activeExamQuestionId && questionVerdicts.has(activeExamQuestionId)) {
-        if (questionVerdicts.get(activeExamQuestionId) !== 'EVALUATING') {
-            return alert("Question is already permanently submitted and locked.");
-        }
-    }
-
     document.getElementById('tab-console').click();
-    terminalEl.innerHTML = `<div class="text-blue-500 italic font-mono text-sm animate-pulse">Executing local run with custom input...</div>`;
-
     const code = editorView.state.doc.toString();
     const lang = document.getElementById('language').value;
     const input = document.getElementById('customInput').value;
+    terminalEl.innerHTML = "";
 
     try {
         const res = await fetch('/api/submissions/submit/', {
@@ -574,9 +611,9 @@ runBtnEl.onclick = async (e) => {
                 code: code,
                 language: lang,
                 user_input: input,
-                time_limit_ms: 60000,
+                time_limit_ms: 10000,
                 room_id: activeExamRoomId, 
-                question_id: null // 🟢 Null forces backend to ignore testcases and act as a scratchpad
+                question_id: null
             })
         });
 
@@ -594,10 +631,8 @@ runBtnEl.onclick = async (e) => {
    ------------------------- */
 submitBtnEl.onclick = async (e) => {
     e.preventDefault();
-    if (currentMode !== "exam") return; 
-    if (!activeExamQuestionId) { alert("Select a question first."); return; }
-
-    if (!confirm("Submit this code for grading?")) return;
+    
+    if (currentMode !== "exam" || !activeExamQuestionId) return; 
 
     applyQuestionVerdict(activeExamQuestionId, 'EVALUATING');
     document.getElementById('tab-console').click();
@@ -606,28 +641,25 @@ submitBtnEl.onclick = async (e) => {
     try {
         const res = await fetch('/api/submissions/submit/', {
             method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json', 
-                'Authorization': `Token ${token}` 
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
             body: JSON.stringify({
                 code: editorView.state.doc.toString(),
                 language: document.getElementById('language').value,
+                user_input: "", 
+                time_limit_ms: 10000,
                 room_id: activeExamRoomId,
-                question_id: activeExamQuestionId,
-                is_exam_submission: true, // Key flag for the backend
-                is_final_submit: true     // Secondary flag often used for grading
+                question_id: activeExamQuestionId 
             })
         });
 
         const data = await res.json();
         
-        if (res.ok && data.id) {
-            // Link the ID to the UI so WebSocket knows which question card to update
-            pendingEvaluations.set(data.id, activeExamQuestionId);
+        if (res.ok) {
+            if (data.id) {
+                pendingEvaluations.set(data.id, activeExamQuestionId);
+            }
         } else {
-            const errorMsg = data.error || data.detail || 'Unknown Error';
-            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(errorMsg)}</div>`;
+            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(data.error || 'Unknown')}</div>`;
             applyQuestionVerdict(activeExamQuestionId, 'ERROR');
         }
     } catch (err) {
@@ -652,24 +684,37 @@ const tabExam = document.getElementById('tab-exam');
 const historyPanel = document.getElementById('historyPanel');
 const examPanel = document.getElementById('examPanel');
 
+window.updateTabUI = function(tabName) {
+    if (tabName === 'console') tabConsole.click();
+    else if (tabName === 'history') tabHistory.click();
+    else if (tabName === 'exam') tabExam.click();
+};
+
+function resetTabClasses() {
+    tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
+    tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
+    tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50" + (isExamActive ? "" : " hidden");
+}
+
 tabConsole.onclick = () => {
+    resetTabClasses();
     tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
-    tabHistory.className = tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
     terminalEl.classList.remove('hidden'); historyPanel.classList.add('hidden'); examPanel.classList.add('hidden');
 };
 tabHistory.onclick = () => {
+    resetTabClasses();
     tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
-    tabConsole.className = tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
     historyPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); examPanel.classList.add('hidden'); fetchHistory();
 };
 tabExam.onclick = () => {
+    if (!isExamActive) return;
+    resetTabClasses();
     tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-purple-600 border-b-2 border-purple-600 uppercase tracking-widest bg-white focus:outline-none";
-    tabConsole.className = tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
     examPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); historyPanel.classList.add('hidden');
 };
 
 /* -------------------------
-   🟢 History logic (FILTERED BY EXAM)
+   🟢 History logic
    ------------------------- */
 async function fetchHistory() {
     const listEl = document.getElementById('historyList');
@@ -681,7 +726,6 @@ async function fetchHistory() {
         
         let historyData = Array.isArray(data) ? data : data.results || [];
         
-        // 🟢 ONLY show submissions for THIS room if in an exam, else show general practice submissions
         if (isExamActive && activeExamRoomId) {
             historyData = historyData.filter(sub => sub.room_id === activeExamRoomId || sub.room === activeExamRoomId);
         } else {
@@ -735,7 +779,7 @@ async function deleteSubmission(id) {
 }
 
 /* -------------------------
-   Join exam & Timer Logic
+   Join exam
    ------------------------- */
 document.getElementById('joinRoomBtn').onclick = () => {
     document.getElementById('joinErrorMsg').classList.add('hidden');
@@ -744,8 +788,14 @@ document.getElementById('joinRoomBtn').onclick = () => {
 
 document.getElementById('joinRoomForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    try { 
+        if (!document.fullscreenElement) {
+            document.documentElement.requestFullscreen(); 
+        }
+    } catch(err) { console.warn("Fullscreen blocked", err); }
     const code = document.getElementById('roomCodeInput').value.toUpperCase();
     const errorMsg = document.getElementById('joinErrorMsg');
+
     try {
         const res = await fetch('/api/rooms/join/', {
             method: 'POST',
@@ -771,13 +821,12 @@ document.getElementById('joinRoomForm').addEventListener('submit', async (e) => 
 });
 
 /* -------------------------
-   Dynamic Verdict Styling & Completion Checker (NO LOCKING)
+   Dynamic Verdict Styling
    ------------------------- */
 function applyQuestionVerdict(qId, status, isRestore = false) {
     if (!qId) return;
     questionVerdicts.set(qId, status); 
 
-    // Save to local storage so reloads remember it
     if (!isRestore) localStorage.setItem('vortex_question_verdicts', JSON.stringify(Object.fromEntries(questionVerdicts)));
 
     const qCard = document.getElementById(`q-card-${qId}`);
@@ -816,12 +865,11 @@ function applyQuestionVerdict(qId, status, isRestore = false) {
     
     if (btn) {
         btn.innerText = (activeExamQuestionId === qId) ? "Currently Solving..." : "Open Editor";
-        btn.disabled = false; // 🟢 NEVER lock the question card button
+        btn.disabled = false;
         btn.className = `text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center ${btnClass}`;
     }
 
     if (activeExamQuestionId === qId) {
-        // 🟢 NEVER lock the editor or the submit button!
         editorView.dispatch({ effects: EditorView.editable.of(true) });
         document.getElementById('runBtn').disabled = false;
         if (submitBtnEl) {
@@ -842,52 +890,60 @@ function checkExamCompletion() {
     }
 }
 
-// 🟢 Safe Exit Handler
 window.safeExitRoom = () => {
     document.getElementById('examCompletedModal').classList.add('hidden');
     document.getElementById('timeUpModal').classList.add('hidden'); 
     document.getElementById('disqualifiedModal').classList.add('hidden');
+    document.getElementById('kickedModal').classList.add('hidden');
+    document.getElementById('waitingRoomOverlay').classList.add('hidden'); 
+    
     clearExamSession();
     activeExamRoomId = null;
     activeExamQuestionId = null;
     if (deadlineInterval) clearInterval(deadlineInterval);
+    if (waitingInterval) clearInterval(waitingInterval);
     document.getElementById('examTimerDisplay').classList.add('hidden');
-    switchToPractice(); 
+    window.location.reload(); 
 };
 
+/* -------------------------
+   Exam Deadlines
+   ------------------------- */
 function startExamDeadlineCountdown(deadlineString) {
-    // Force the deadline string to be treated as UTC/Zulu time to avoid the 5-hour offset
-    const targetTimeStr = deadlineString.endsWith('Z') ? deadlineString : deadlineString + 'Z';
-    const examDeadlineTime = new Date(targetTimeStr).getTime();
+    examDeadlineTime = parseSafeDate(deadlineString);
     
     const timerDisplay = document.getElementById('examTimerDisplay');
     if (!timerDisplay) return;
     
     timerDisplay.classList.remove('hidden');
 
-    if (window.deadlineInterval) clearInterval(window.deadlineInterval);
+    if (deadlineInterval) clearInterval(deadlineInterval);
 
-    window.deadlineInterval = setInterval(() => {
-        const now = new Date().getTime(); // Browser time in UTC
+    deadlineInterval = setInterval(() => {
+        const now = new Date().getTime();
         const distance = examDeadlineTime - now;
 
+        if (isNaN(distance)) {
+            timerDisplay.innerText = "TIME_ERR";
+            clearInterval(deadlineInterval);
+            return;
+        }
+
         if (distance <= 0) {
-            clearInterval(window.deadlineInterval);
-            timerDisplay.innerText = "EXPIRED";
-            // Trigger auto-submit logic here if you have it
+            clearInterval(deadlineInterval);
+            timerDisplay.innerText = "00:00:00";
+            triggerTimeUp();
         } else {
             const hours = Math.floor(distance / (1000 * 60 * 60));
             const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
             const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-            timerDisplay.innerText = `Ends in: ${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+            timerDisplay.innerText = `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
         }
     }, 1000);
 }
 
 function triggerTimeUp() {
     isExamActive = false;
-    activeExamRoomId = null;
-    activeExamQuestionId = null;
     document.getElementById('examTimerDisplay').classList.add('hidden');
     document.getElementById('timeUpModal').classList.remove('hidden');
     
@@ -898,7 +954,7 @@ function triggerTimeUp() {
 }
 
 /* -------------------------
-   setActiveQuestion (NO LOCKING)
+   setActiveQuestion
    ------------------------- */
 window.setActiveQuestion = (qId, roomId) => {
     if (activeExamQuestionId && activeExamRoomId) persistCurrentCode();
@@ -926,9 +982,8 @@ window.setActiveQuestion = (qId, roomId) => {
         const description = questionCard.querySelector('p').innerText;
 
         viewer.innerHTML = `
-            <div class="max-w-4xl mx-auto">
-                <h2 class="text-2xl font-black text-blue-700 mb-4">${title}</h2>
-                <div class="whitespace-pre-wrap font-mono text-sm bg-white p-5 rounded-lg border border-gray-200 text-left">
+            <div class="w-full text-left"> <h2 class="text-2xl font-black text-blue-700 mb-4 text-left">${title}</h2>
+                <div class="whitespace-pre-wrap font-mono text-sm bg-white p-5 rounded-lg border border-gray-200 text-left block w-full">
                     ${escapeHtml(description)}
                 </div>
             </div>
@@ -946,18 +1001,17 @@ window.setActiveQuestion = (qId, roomId) => {
         }
     }
 
-    // 🟢 Keep everything unlocked so they can submit multiple times
     editorView.dispatch({ effects: EditorView.editable.of(true) });
     document.getElementById('runBtn').disabled = false;
     submitBtnEl.disabled = false;
-    submitBtnEl.innerText = "Final Submit";
+    submitBtnEl.innerText = "Submit";
     submitBtnEl.className = "bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg";
 
     document.getElementById('tab-console').click();
 };
 
 /* -------------------------
-   Anti-cheat
+   Anti-cheat & Fullscreen check
    ------------------------- */
 document.addEventListener("visibilitychange", () => {
     if (isExamActive && !isDisqualified) {
@@ -967,7 +1021,10 @@ document.addEventListener("visibilitychange", () => {
 
 document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && isExamActive && !isDisqualified) {
-        alert("⚠️ WARNING: You have exited full screen.");
+        // 🟢 FIXED: Silent visual warning instead of native alert
+        const warning = document.getElementById('fullscreenWarning');
+        warning.classList.remove('-translate-y-24');
+        setTimeout(() => warning.classList.add('-translate-y-24'), 4000);
     }
 });
 
@@ -1018,6 +1075,9 @@ function switchToPractice() {
     updateSubmitVisibility();
     editorView.dispatch({ effects: EditorView.editable.of(true) });
     document.getElementById('runBtn').disabled = false;
+    
+    document.getElementById('tab-exam').classList.add('hidden');
+    
     document.getElementById('tab-console').click();
     document.getElementById('examQuestionsList').innerHTML = '';
     document.getElementById('examQuestionViewer').innerHTML = '<p class="text-gray-400 italic text-center mt-10">Select a question from the left panel to view its details.</p>';
@@ -1027,6 +1087,51 @@ function switchToExam() {
     currentMode = "exam";
     updateSubmitVisibility();
     isExamActive = true;
+}
+
+/* -------------------------
+   🟢 NEW: WAITING ROOM ENGINE
+   ------------------------- */
+function showWaitingRoom(title, teacher, startTimeMs, deadlineStr) {
+    const overlay = document.getElementById('waitingRoomOverlay');
+    const timerEl = document.getElementById('waitingRoomTimer');
+    const reEnterBtn = document.getElementById('reEnterFullscreenBtn');
+    const timerContainer = document.getElementById('waitingRoomTimerContainer');
+
+    document.getElementById('waitingRoomTitle').innerText = title || "Exam Room";
+    document.getElementById('waitingRoomTeacher').innerText = teacher || "Instructor";
+    overlay.classList.remove('hidden');
+
+    // 🟢 FIX: Handle the Refresh/Fullscreen issue
+    if (!document.fullscreenElement) {
+        reEnterBtn.classList.remove('hidden');
+        timerContainer.classList.add('opacity-20', 'pointer-events-none'); // Dim the timer until they click
+    }
+
+    reEnterBtn.onclick = () => {
+        document.documentElement.requestFullscreen().then(() => {
+            reEnterBtn.classList.add('hidden');
+            timerContainer.classList.remove('opacity-20', 'pointer-events-none');
+        }).catch(err => console.warn("Fullscreen request failed", err));
+    };
+
+    if (waitingInterval) clearInterval(waitingInterval);
+
+    waitingInterval = setInterval(() => {
+        const now = new Date().getTime();
+        const distance = startTimeMs - now;
+
+        if (distance <= 0) {
+            clearInterval(waitingInterval);
+            overlay.classList.add('hidden'); 
+            if (deadlineStr) startExamDeadlineCountdown(deadlineStr);
+        } else {
+            const hours = Math.floor(distance / (1000 * 60 * 60));
+            const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+            timerEl.innerText = `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+        }
+    }, 1000);
 }
 
 // 🟢 BOOTSTRAP APP

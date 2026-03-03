@@ -21,7 +21,7 @@ class ExamRoom(models.Model):
     teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_rooms')
     room_code = models.CharField(max_length=10, unique=True, default=generate_room_code)
     title = models.CharField(max_length=100)
-    
+    start_time = models.DateTimeField(null=True, blank=True) # 🟢 ADD THIS
     # Time limit to join (Students cannot join after this exact time)
     join_deadline = models.DateTimeField() 
     

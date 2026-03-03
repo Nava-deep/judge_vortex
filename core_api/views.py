@@ -235,6 +235,9 @@ def join_room_view(request):
         return Response({
             'message': 'Resumed room successfully!',
             'room_title': room.title,
+            'room_id':room.id,
+            'teacher_name': room.teacher.username, # 🟢 ADDED FOR WAITING ROOM
+            'start_time': room.start_time.isoformat() if getattr(room, 'start_time', None) else None, # 🟢 ADDED FOR WAITING ROOM
             'deadline': room.join_deadline.isoformat(), 
             'assigned_questions': ExamQuestionSerializer(assigned_qs, many=True).data
         }, status=status.HTTP_200_OK)
@@ -261,10 +264,12 @@ def join_room_view(request):
     return Response({
         'message': 'Successfully joined room!',
         'room_title': room.title,
+        'room_id':room.id,
+        'teacher_name': room.teacher.username, # 🟢 ADDED FOR WAITING ROOM
+        'start_time': room.start_time.isoformat() if getattr(room, 'start_time', None) else None, # 🟢 ADDED FOR WAITING ROOM
         'deadline': room.join_deadline.isoformat(), 
         'assigned_questions': ExamQuestionSerializer(assigned_qs, many=True).data
     }, status=status.HTTP_201_CREATED)
-
 
 # ==========================================
 # 4. SUBMISSION ENDPOINTS

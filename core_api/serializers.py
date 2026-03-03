@@ -2,27 +2,25 @@ from rest_framework import serializers
 # Import all the new models we created
 from .models import Submission, ExamRoom, ExamQuestion, RoomParticipant
 
-# --- 1. Question Serializer ---
 class ExamQuestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExamQuestion
-        fields = ['id', 'room', 'title', 'description', 'testcase_input', 'expected_output', 'total_marks']
-        read_only_fields = ['room']
+        # REMOVE 'total_questions' from this list below
+        fields = ['id', 'title', 'description', 'testcase_input', 'expected_output', 'total_marks']
 
-# --- 2. Room Serializer (FIXED) ---
+
 class ExamRoomSerializer(serializers.ModelSerializer):
-    questions = ExamQuestionSerializer(many=True, read_only=True)
-    teacher_username = serializers.ReadOnlyField(source='teacher.username')
     total_questions = serializers.SerializerMethodField()
+    teacher_username = serializers.CharField(source='teacher.username', read_only=True)
 
     class Meta:
         model = ExamRoom
         fields = [
-            'id', 'teacher', 'teacher_username', 'title', 'room_code', 
-            'created_at', 'join_deadline', 'is_active', 
-            'questions_to_assign', 'questions', 'total_questions'
+            'id', 'title', 'room_code', 'questions_to_assign', 
+            'start_time', 'join_deadline', 'created_at', 
+            'total_questions', 'teacher_username'
         ]
-        read_only_fields = ['teacher', 'room_code', 'created_at']
+        read_only_fields = ['room_code', 'created_at']
 
     def get_total_questions(self, obj):
         return obj.questions.count()
