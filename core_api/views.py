@@ -28,7 +28,7 @@ from execution_routing import get_submission_topic
 
 logger = logging.getLogger(__name__)
 _kafka_producer = None
-KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(",") if server.strip()]
+KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092").split(",") if server.strip()]
 AUTO_DISQUALIFY_SENTINEL = "DISQUALIFIED_AUTO_SUBMIT"
 
 
@@ -231,7 +231,7 @@ class RoomDetailView(APIView):
         room.delete()
         return Response(
             {"message": "Exam Room and all related data deleted successfully."}, 
-            status=status.HTTP_204_NO_CONTENT
+            status=status.HTTP_200_OK
         )
 
 class RoomParticipantDeleteView(APIView):

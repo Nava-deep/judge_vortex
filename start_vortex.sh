@@ -17,6 +17,7 @@ docker network inspect vortex-bridge >/dev/null 2>&1 || docker network create vo
 echo "Launching Core & Monitoring Stacks..."
 cd infrastructure
 KAFKA_SUBMISSIONS_TOPIC_PARTITIONS="${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS:-8}"
+KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092}"
 EXECUTOR_CORE_REPLICAS="${EXECUTOR_CORE_REPLICAS:-1}"
 EXECUTOR_JAVA_REPLICAS="${EXECUTOR_JAVA_REPLICAS:-1}"
 FORCE_BUILD="${FORCE_BUILD:-0}"
@@ -62,7 +63,7 @@ docker exec vortex-redis redis-cli FLUSHALL > /dev/null 2>&1
 # 5. SERVICE BOOT
 echo "Ensuring Kafka topic topology..."
 sleep 6
-KAFKA_SUBMISSIONS_TOPIC_PARTITIONS="${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS}" python3 kafka_setup.py
+KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS}" KAFKA_SUBMISSIONS_TOPIC_PARTITIONS="${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS}" python3 kafka_setup.py
 
 echo "--------------------------------------------------------"
 echo "JUDGE VORTEX IS ONLINE"

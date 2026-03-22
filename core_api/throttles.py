@@ -6,7 +6,7 @@ from kafka.admin import KafkaAdminClient
 from execution_routing import get_topic_consumer_groups
 
 logger = logging.getLogger(__name__)
-KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(",") if server.strip()]
+KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092").split(",") if server.strip()]
 
 class KafkaManager:
     """Singleton to keep Kafka connection alive across requests"""

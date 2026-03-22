@@ -11,7 +11,7 @@ from prometheus_client import start_http_server, Counter
 
 # --- CONFIGURATION ---
 KAFKA_SUBMISSIONS_TOPIC = os.getenv("KAFKA_SUBMISSIONS_TOPIC", "code_submissions")
-KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(",") if server.strip()]
+KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092").split(",") if server.strip()]
 KAFKA_EXECUTOR_GROUP = os.getenv("KAFKA_EXECUTOR_GROUP", "judge_vortex_executor")
 EXECUTOR_PROMETHEUS_PORT = int(os.getenv("EXECUTOR_PROMETHEUS_PORT", "8001"))
 MAX_CONCURRENT_EXECUTIONS = max(2, int(os.getenv("EXECUTOR_MAX_CONCURRENCY", min(os.cpu_count() or 4, 8))))

@@ -1266,6 +1266,7 @@ function loadPastCode(id) {
     document.getElementById('language').value = sub.language;
     editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(sub.language)) });
     editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: sub.code} });
+    renderSubmissionOutput(sub, submissionQuestionId);
     tabConsole.click();
 }
 
