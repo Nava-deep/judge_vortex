@@ -284,25 +284,48 @@ class SubmissionCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         user_custom_input = self.request.data.get('user_input', "")
-        room_id = self.request.data.get('room_id')
-        question_id = self.request.data.get('question_id')
-        
-        if room_id:
-            is_participant = RoomParticipant.objects.filter(
-                room_id=room_id, 
-                student=self.request.user
-            ).exists()
-            
-            if not is_participant:
-                raise serializers.ValidationError({
-                    "error": "Access Denied. You are not a registered participant of this exam room."
-                })
+        room_id = self.request.data.get('room_id') or None
+        question_id = self.request.data.get('question_id') or None
+        participant = None
+        question = None
+
+        try:
+            if room_id is not None:
+                room_id = int(room_id)
+            if question_id is not None:
+                question_id = int(question_id)
+        except (TypeError, ValueError):
+            raise serializers.ValidationError({
+                "error": "Invalid room or question identifier."
+            })
 
         # 🟢 Distinguish between "Run Test" and "Final Submit"
         if question_id:
             # If there is a question ID, it's a final submit. Override the stdin with hidden cases.
             question = get_object_or_404(ExamQuestion, id=question_id)
+            if room_id is None:
+                room_id = question.room_id
+            elif question.room_id != room_id:
+                raise serializers.ValidationError({
+                    "error": "The selected question does not belong to this exam room."
+                })
             user_custom_input = question.testcase_input
+
+        if room_id:
+            participant = RoomParticipant.objects.filter(
+                room_id=room_id,
+                student=self.request.user
+            ).first()
+
+            if not participant:
+                raise serializers.ValidationError({
+                    "error": "Access Denied. You are not a registered participant of this exam room."
+                })
+
+        if question and participant and not participant.assigned_questions.filter(id=question.id).exists():
+            raise serializers.ValidationError({
+                "error": "This question is not assigned to you for this exam."
+            })
 
         # Save the submission to the DB
         submission = serializer.save(
@@ -389,6 +412,13 @@ class SubmissionListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Submission.objects.filter(user=self.request.user).order_by('-submitted_at')
+
+class SubmissionDetailView(generics.RetrieveAPIView):
+    serializer_class = SubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Submission.objects.filter(user=self.request.user)
 
 class SubmissionDeleteView(generics.DestroyAPIView):
     serializer_class = SubmissionSerializer

@@ -6,7 +6,7 @@ class ExamQuestionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExamQuestion
         # REMOVE 'total_questions' from this list below
-        fields = ['id', 'title', 'description', 'testcase_input', 'expected_output', 'total_marks']
+        fields = ['id', 'room', 'title', 'description', 'testcase_input', 'expected_output', 'total_marks']
 
 
 class ExamRoomSerializer(serializers.ModelSerializer):
@@ -21,6 +21,23 @@ class ExamRoomSerializer(serializers.ModelSerializer):
             'total_questions', 'teacher_username'
         ]
         read_only_fields = ['room_code', 'created_at']
+
+    def validate(self, attrs):
+        start_time = attrs.get('start_time')
+        join_deadline = attrs.get('join_deadline')
+
+        if self.instance:
+            if start_time is None:
+                start_time = self.instance.start_time
+            if join_deadline is None:
+                join_deadline = self.instance.join_deadline
+
+        if start_time and join_deadline and join_deadline <= start_time:
+            raise serializers.ValidationError({
+                'join_deadline': 'Exam end time must be later than the exam start time.'
+            })
+
+        return attrs
 
     def get_total_questions(self, obj):
         return obj.questions.count()

@@ -37,6 +37,8 @@ async def grade_submission(submission_data):
 
     if result['status'] == 'TLE':
         await update_submission(sub_id, 'TLE', "Time Limit Exceeded", time_limit)
+    elif result['status'] in ['MEMORY_LIMIT_EXCEEDED', 'MLE']:
+        await update_submission(sub_id, 'MLE', result['output'], result['time_ms'])
     elif result['status'] in ['RUNTIME_ERROR', 'COMPILATION_ERROR', 'SYSTEM_ERROR']:
         await update_submission(sub_id, result['status'], result['output'], result['time_ms'])
     else:

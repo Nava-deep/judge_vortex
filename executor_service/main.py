@@ -49,7 +49,8 @@ async def run_grade_task(submission_data):
         try:
             await grade_submission(submission_data)
             print(f"Finished processing ID: {sub_id} (Slot Released)")
-        except Exception as e:pass
+        except Exception as e:
+            print(f"Executor error while processing {sub_id}: {e}")
 
 async def start_worker():
     # 1. Start the Prometheus metrics server

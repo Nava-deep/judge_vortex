@@ -59,25 +59,28 @@
         .cm-focused { outline: none !important; }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-800 h-screen flex flex-col font-sans overflow-hidden relative">
+<body class="bg-[#edf4ff] text-gray-800 h-screen flex flex-col font-sans overflow-hidden relative">
+<div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(147,51,234,0.14),_transparent_24%),linear-gradient(180deg,_#f8fbff,_#edf4ff_52%,_#f6f9ff)]"></div>
+<div class="absolute top-[-7rem] left-[-4rem] h-72 w-72 rounded-full bg-blue-400/18 blur-3xl"></div>
+<div class="absolute bottom-[-8rem] right-[-5rem] h-80 w-80 rounded-full bg-violet-400/16 blur-3xl"></div>
 
-<nav class="bg-white border-b border-gray-200 p-3 flex justify-between items-center z-30 shrink-0 shadow-sm">
-    <button id="joinRoomBtn" type="button" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md transition mr-2 flex items-center">
+<nav class="relative z-30 mx-4 mt-4 bg-white/80 border border-white/70 p-3.5 flex justify-between items-center shrink-0 shadow-[0_24px_60px_-34px_rgba(37,99,235,0.35)] backdrop-blur-xl rounded-[28px]">
+    <button id="joinRoomBtn" type="button" class="bg-gradient-to-r from-violet-600 to-blue-600 hover:brightness-110 text-white px-4 py-2.5 rounded-xl text-sm font-bold shadow-md transition mr-2 flex items-center">
         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
         Join Exam
     </button>
 
     <div class="flex items-center space-x-3">
-        <h1 class="text-xl font-black text-blue-600 tracking-tight">Judge Vortex</h1>
-        <span class="bg-blue-50 text-[10px] px-2 py-1 rounded text-blue-600 border border-blue-200 uppercase tracking-tighter font-bold">Student View</span>
+        <h1 class="text-xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600">Judge Vortex</h1>
+        <span class="bg-blue-50 text-[10px] px-2.5 py-1 rounded-full text-blue-600 border border-blue-200 uppercase tracking-[0.22em] font-bold">Student View</span>
     </div>
 
     <div class="flex items-center space-x-4">
-        <div id="examTimerDisplay" class="hidden font-mono font-bold text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200 text-sm shadow-sm animate-pulse">
+        <div id="examTimerDisplay" class="hidden font-mono font-bold text-red-600 bg-red-50 px-3 py-2 rounded-xl border border-red-200 text-sm shadow-sm animate-pulse">
             00:00:00
         </div>
 
-        <select id="language" class="bg-white text-gray-700 text-sm px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
+        <select id="language" class="bg-white text-gray-700 text-sm px-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm">
             <option value="python">Python 3.11</option>
             <option value="cpp">C++ (GCC)</option>
             <option value="c">C (GCC)</option>
@@ -95,12 +98,12 @@
         </select>
 
         <div class="flex items-center space-x-3">
-            <button id="runBtn" type="button" class="bg-gray-800 hover:bg-black text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg">
+            <button id="runBtn" type="button" class="bg-gray-800 hover:bg-black text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg">
                 <svg class="w-4 h-4 mr-2 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path d="M4.5 3.5v13l11-6.5-11-6.5z"/></svg>
                 Run Test
             </button>
 
-            <button id="submitBtn" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg" style="display: none;">
+            <button id="submitBtn" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg" style="display: none;">
                 Submit
             </button>
         </div>
@@ -113,16 +116,16 @@
     ⚠️ WARNING: You have exited full screen.
 </div>
 
-<div class="flex-1 flex overflow-hidden w-full">
+<div class="relative z-10 flex-1 flex overflow-hidden w-full p-4 gap-4">
 
-    <div id="leftPanel" class="flex flex-col min-w-[200px]" style="width: 60%;">
-        <div id="editorTop" class="flex-1 relative bg-white overflow-hidden border-r border-gray-200">
+    <div id="leftPanel" class="flex flex-col min-w-[200px] rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)] bg-white/88 backdrop-blur-xl" style="width: 60%;">
+        <div id="editorTop" class="flex-1 relative bg-white overflow-hidden border-r border-slate-100">
             <div id="editorContainer" class="absolute inset-0"></div>
         </div>
 
         <div id="gutterV" class="gutter-v shrink-0 border-y border-gray-200 bg-gray-50"></div>
 
-        <div id="inputBottom" class="bg-gray-50 p-3 flex flex-col shrink-0 border-r border-gray-200" style="height: 180px;">
+        <div id="inputBottom" class="bg-slate-50/90 p-3 flex flex-col shrink-0 border-r border-slate-100" style="height: 180px;">
             <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin)</label>
             <textarea id="customInput" placeholder="Enter custom test cases here..." class="flex-1 w-full bg-white border border-gray-300 rounded p-3 font-mono text-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 box-border resize-none transition shadow-sm"></textarea>
         </div>
@@ -130,11 +133,11 @@
 
     <div id="gutterH" class="gutter-h shrink-0 border-x border-gray-200 bg-gray-50"></div>
 
-    <div id="rightPanel" class="flex-1 min-w-[300px] flex flex-col bg-white">
-        <div class="bg-gray-50 flex border-b border-gray-200 shrink-0 sticky top-0 z-20">
+    <div id="rightPanel" class="flex-1 min-w-[300px] flex flex-col bg-white/88 backdrop-blur-xl rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)]">
+        <div class="bg-slate-50/90 flex border-b border-slate-100 shrink-0 sticky top-0 z-20">
             <button id="tab-console" class="flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none">Output</button>
-            <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">History</button>
-            <button id="tab-exam" class="hidden flex-1 px-5 py-3 text-xs font-bold text-purple-600 hover:text-purple-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50">Exam Qs</button>
+            <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-slate-50/90">History</button>
+            <button id="tab-exam" class="hidden flex-1 px-5 py-3 text-xs font-bold text-purple-600 hover:text-purple-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-slate-50/90">Exam Qs</button>
         </div>
 
         <div class="flex-1 relative overflow-hidden">
@@ -235,7 +238,7 @@
     <button id="reEnterFullscreenBtn" class="hidden mb-8 px-8 py-4 bg-blue-600 text-white font-black rounded-2xl shadow-2xl hover:bg-blue-700 transition transform hover:scale-105 uppercase tracking-widest">
         Click to Re-enter Fullscreen & Resume
     </button>
-    <div class="bg-gray-800 p-10 rounded-3xl border border-gray-700 shadow-2xl text-center min-w-[400px]">
+    <div id="waitingRoomTimerContainer" class="bg-gray-800 p-10 rounded-3xl border border-gray-700 shadow-2xl text-center min-w-[400px] transition-opacity duration-200">
         <p class="text-sm text-gray-400 uppercase tracking-widest font-bold mb-4">Exam Starts In</p>
         <div id="waitingRoomTimer" class="text-7xl font-mono font-black text-white tracking-tight">00:00:00</div>
     </div>
@@ -280,6 +283,8 @@ let currentMode = "practice";
 let questionVerdicts = new Map(); // Tracks state: EVALUATING, PASSED, WRONG_ANSWER
 let pendingEvaluations = new Map(); // submission_id -> question_id map for WS routing
 let submissionCache = {};
+const assignedQuestionBank = new Map();
+const submissionPollers = new Map();
 let isExamActive = false;
 let isDisqualified = false;
 let activeExamRoomId = null;
@@ -312,6 +317,7 @@ const boilerplate = {
 };
 
 const languageConf = new Compartment();
+const editableConf = new Compartment();
 const getLangExtension = (langStr) => {
     switch(langStr) {
         case 'python': return python();
@@ -341,11 +347,17 @@ const editorView = new EditorView({
             basicSetup,
             keymap.of([indentWithTab]),
             languageConf.of(getLangExtension(initialLang)),
-            EditorView.editable.of(true) // ALWAYS KEEP TRUE globally
+            editableConf.of(EditorView.editable.of(true))
         ]
     }),
     parent: document.getElementById('editorContainer')
 });
+
+function setEditorEditable(isEditable) {
+    editorView.dispatch({
+        effects: editableConf.reconfigure(EditorView.editable.of(isEditable))
+    });
+}
 
 document.getElementById('language').addEventListener('change', (e) => {
     const lang = e.target.value;
@@ -413,6 +425,150 @@ function parseSafeDate(dateStr) {
     return new Date(cleanStr).getTime();
 }
 
+function isTerminalSubmissionStatus(status) {
+    return !['PENDING', 'PROCESSING'].includes(String(status || '').toUpperCase());
+}
+
+function getSubmissionStatusTone(status) {
+    const normalizedStatus = String(status || 'PENDING').toUpperCase();
+    if (normalizedStatus === 'PASSED' || normalizedStatus === 'SUCCESS') {
+        return {
+            textClass: 'text-green-700',
+            badgeClass: 'bg-green-50 text-green-700 border-green-200'
+        };
+    }
+    if (normalizedStatus === 'PENDING' || normalizedStatus === 'PROCESSING') {
+        return {
+            textClass: 'text-yellow-700',
+            badgeClass: 'bg-yellow-50 text-yellow-700 border-yellow-200'
+        };
+    }
+    return {
+        textClass: 'text-red-700',
+        badgeClass: 'bg-red-50 text-red-700 border-red-200'
+    };
+}
+
+function renderSubmissionOutput(submission) {
+    const normalizedStatus = String(submission.status || submission.result || 'PENDING').toUpperCase();
+    const output = submission.output || submission.stdout || submission.message || '';
+    const executionTime = submission.execution_time_ms ?? submission.execution_time ?? null;
+    const tone = getSubmissionStatusTone(normalizedStatus);
+
+    terminalEl.innerHTML = `
+        <div class="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200">
+            <span class="inline-flex items-center px-3 py-1 rounded-full border text-[11px] font-black uppercase tracking-widest ${tone.badgeClass}">
+                ${escapeHtml(normalizedStatus.replace(/_/g, ' '))}
+            </span>
+            <span class="text-[11px] font-mono text-gray-400">
+                ${executionTime === null ? 'Waiting for result...' : `${escapeHtml(executionTime)} ms`}
+            </span>
+        </div>
+        <pre class="whitespace-pre-wrap break-words font-mono text-sm ${tone.textClass}">${escapeHtml(output || 'No output')}</pre>
+    `;
+}
+
+function clearSubmissionTracking(submissionId) {
+    const timerId = submissionPollers.get(submissionId);
+    if (timerId) {
+        clearInterval(timerId);
+        submissionPollers.delete(submissionId);
+    }
+}
+
+function clearAllSubmissionTracking() {
+    submissionPollers.forEach((timerId) => clearInterval(timerId));
+    submissionPollers.clear();
+}
+
+async function readJsonSafe(response) {
+    try {
+        return await response.json();
+    } catch (err) {
+        return {};
+    }
+}
+
+async function fetchSubmissionStatus(submissionId) {
+    const response = await fetch(`/api/submissions/${submissionId}/`, {
+        headers: { 'Authorization': `Token ${token}` }
+    });
+
+    if (!response.ok) {
+        return null;
+    }
+
+    return readJsonSafe(response);
+}
+
+function handleSubmissionResolution(submission) {
+    const submissionId = Number(submission.submission_id || submission.id);
+    if (!submissionId) return;
+
+    const normalizedStatus = String(submission.status || submission.result || 'PENDING').toUpperCase();
+    renderSubmissionOutput(submission);
+
+    if (pendingEvaluations.has(submissionId) && isTerminalSubmissionStatus(normalizedStatus)) {
+        const questionId = pendingEvaluations.get(submissionId);
+        applyQuestionVerdict(questionId, normalizedStatus);
+        pendingEvaluations.delete(submissionId);
+    }
+
+    if (isTerminalSubmissionStatus(normalizedStatus)) {
+        clearSubmissionTracking(submissionId);
+    }
+}
+
+function beginSubmissionTracking(submissionId, questionId = null) {
+    const numericSubmissionId = Number(submissionId);
+    if (!numericSubmissionId) return;
+
+    if (questionId) {
+        pendingEvaluations.set(numericSubmissionId, questionId);
+    }
+
+    clearSubmissionTracking(numericSubmissionId);
+
+    let attempts = 0;
+    let requestInFlight = false;
+
+    const poll = async () => {
+        if (requestInFlight) return;
+        requestInFlight = true;
+        attempts += 1;
+
+        try {
+            const submission = await fetchSubmissionStatus(numericSubmissionId);
+            if (submission) {
+                handleSubmissionResolution(submission);
+                if (isTerminalSubmissionStatus(submission.status)) {
+                    return;
+                }
+            }
+
+            if (attempts >= 90) {
+                clearSubmissionTracking(numericSubmissionId);
+                if (pendingEvaluations.has(numericSubmissionId)) {
+                    const questionIdFromPending = pendingEvaluations.get(numericSubmissionId);
+                    pendingEvaluations.delete(numericSubmissionId);
+                    applyQuestionVerdict(questionIdFromPending, 'ERROR');
+                }
+                terminalEl.innerHTML = '<div class="text-red-500 font-mono">Execution is taking longer than expected. Please retry the submission.</div>';
+            }
+        } catch (err) {
+            if (attempts >= 90) {
+                clearSubmissionTracking(numericSubmissionId);
+            }
+        } finally {
+            requestInFlight = false;
+        }
+    };
+
+    const intervalId = setInterval(poll, 1500);
+    submissionPollers.set(numericSubmissionId, intervalId);
+    poll();
+}
+
 /* -------------------------
    WebSocket (robust) & Terminal renderer
    ------------------------- */
@@ -444,22 +600,7 @@ if (socket) {
 
         const candidate = payload.data || payload.result || payload || {};
         const submission = candidate.submission || candidate;
-
-        const submissionId = submission.submission_id || submission.id;
-        const output = submission.output || submission.stdout || submission.message;
-        const status = (submission.status || submission.result || "SUCCESS").toUpperCase();
-
-        if (submissionId) {
-            terminalEl.innerHTML = `<div class="mb-4 whitespace-pre-wrap font-mono text-gray-800">${escapeHtml(output ?? "")}</div>`;
-            
-            if (pendingEvaluations.has(submissionId)) {
-                const qid = pendingEvaluations.get(submissionId);
-                if (status !== 'PENDING' && status !== 'PROCESSING') {
-                    applyQuestionVerdict(qid, status);
-                    pendingEvaluations.delete(submissionId); 
-                }
-            }
-        }
+        handleSubmissionResolution(submission);
     };
 }
 
@@ -505,6 +646,9 @@ function clearExamSession() {
     localStorage.removeItem('vortex_active_room_code');
     localStorage.removeItem('vortex_question_verdicts');
     questionVerdicts.clear();
+    pendingEvaluations.clear();
+    assignedQuestionBank.clear();
+    clearAllSubmissionTracking();
 }
 
 async function resumeActiveExam() {
@@ -533,9 +677,14 @@ async function resumeActiveExam() {
 
 function renderExamMode(data, code) {
     document.getElementById('joinRoomModal').classList.add('hidden');
+    assignedQuestionBank.clear();
+    if (deadlineInterval) clearInterval(deadlineInterval);
+    if (waitingInterval) clearInterval(waitingInterval);
+    document.getElementById('waitingRoomOverlay').classList.add('hidden');
     activeExamRoomId = data.room_id;
     currentMode = "exam";
     isExamActive = true;
+    isDisqualified = false;
     updateSubmitVisibility();
 
     totalAssignedQuestions = data.assigned_questions.length;
@@ -544,6 +693,7 @@ function renderExamMode(data, code) {
     const qList = document.getElementById('examQuestionsList');
     qList.innerHTML = '';
     data.assigned_questions.forEach((q, index) => {
+        assignedQuestionBank.set(q.id, q);
         qList.innerHTML += `
             <div id="q-card-${q.id}" class="bg-white border-2 border-gray-200 p-4 rounded-xl shadow-sm relative transition flex flex-col hover:border-blue-300">
                 <div class="flex justify-between items-center mb-3">
@@ -552,7 +702,7 @@ function renderExamMode(data, code) {
                 </div>
                 <h3 class="font-bold text-gray-800 text-base mb-1 line-clamp-1 text-left">${escapeHtml(q.title)}</h3>
                 <p class="text-xs text-gray-500 mb-4 line-clamp-2 flex-1 text-left">${escapeHtml(q.description)}</p>
-                <button id="lock-btn-${q.id}" onclick="window.setActiveQuestion(${q.id}, ${q.room})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-sm">
+                <button id="lock-btn-${q.id}" onclick="window.setActiveQuestion(${q.id}, ${data.room_id})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-sm">
                     Open Editor
                 </button>
             </div>
@@ -601,7 +751,7 @@ runBtnEl.onclick = async (e) => {
     const code = editorView.state.doc.toString();
     const lang = document.getElementById('language').value;
     const input = document.getElementById('customInput').value;
-    terminalEl.innerHTML = "";
+    terminalEl.innerHTML = '<div class="text-gray-500 font-mono">Running code...</div>';
 
     try {
         const res = await fetch('/api/submissions/submit/', {
@@ -617,9 +767,18 @@ runBtnEl.onclick = async (e) => {
             })
         });
 
+        const data = await readJsonSafe(res);
+
         if (!res.ok) {
-            const errData = await res.json();
+            const errData = data;
             terminalEl.innerHTML = `<div class="text-red-500 font-mono">Error: ${escapeHtml(errData.error || "Execution failed")}</div>`;
+            return;
+        }
+
+        if (data.id) {
+            beginSubmissionTracking(data.id);
+        } else {
+            terminalEl.innerHTML = '<div class="text-red-500 font-mono">Execution started, but the submission ID was not returned.</div>';
         }
     } catch (err) {
         terminalEl.innerHTML = `<div class="text-red-500 font-mono">Network Error: ${escapeHtml(err.message || String(err))}</div>`;
@@ -652,11 +811,14 @@ submitBtnEl.onclick = async (e) => {
             })
         });
 
-        const data = await res.json();
+        const data = await readJsonSafe(res);
         
         if (res.ok) {
             if (data.id) {
-                pendingEvaluations.set(data.id, activeExamQuestionId);
+                beginSubmissionTracking(data.id, activeExamQuestionId);
+            } else {
+                terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: submission ID missing from the server response.</div>`;
+                applyQuestionVerdict(activeExamQuestionId, 'ERROR');
             }
         } else {
             terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(data.error || 'Unknown')}</div>`;
@@ -870,7 +1032,7 @@ function applyQuestionVerdict(qId, status, isRestore = false) {
     }
 
     if (activeExamQuestionId === qId) {
-        editorView.dispatch({ effects: EditorView.editable.of(true) });
+        setEditorEditable(true);
         document.getElementById('runBtn').disabled = false;
         if (submitBtnEl) {
             submitBtnEl.disabled = false; 
@@ -902,6 +1064,7 @@ window.safeExitRoom = () => {
     activeExamQuestionId = null;
     if (deadlineInterval) clearInterval(deadlineInterval);
     if (waitingInterval) clearInterval(waitingInterval);
+    stopCheatTimer();
     document.getElementById('examTimerDisplay').classList.add('hidden');
     window.location.reload(); 
 };
@@ -919,7 +1082,7 @@ function startExamDeadlineCountdown(deadlineString) {
 
     if (deadlineInterval) clearInterval(deadlineInterval);
 
-    deadlineInterval = setInterval(() => {
+    const updateDeadlineTimer = () => {
         const now = new Date().getTime();
         const distance = examDeadlineTime - now;
 
@@ -939,7 +1102,10 @@ function startExamDeadlineCountdown(deadlineString) {
             const seconds = Math.floor((distance % (1000 * 60)) / 1000);
             timerDisplay.innerText = `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
         }
-    }, 1000);
+    };
+
+    updateDeadlineTimer();
+    deadlineInterval = setInterval(updateDeadlineTimer, 1000);
 }
 
 function triggerTimeUp() {
@@ -947,7 +1113,8 @@ function triggerTimeUp() {
     document.getElementById('examTimerDisplay').classList.add('hidden');
     document.getElementById('timeUpModal').classList.remove('hidden');
     
-    editorView.dispatch({ effects: EditorView.editable.of(false) });
+    stopCheatTimer();
+    setEditorEditable(false);
     document.getElementById('runBtn').disabled = true;
     if (document.getElementById('submitBtn')) document.getElementById('submitBtn').disabled = true;
     clearExamSession();
@@ -959,8 +1126,11 @@ function triggerTimeUp() {
 window.setActiveQuestion = (qId, roomId) => {
     if (activeExamQuestionId && activeExamRoomId) persistCurrentCode();
 
+    const resolvedRoomId = roomId || activeExamRoomId;
+    const question = assignedQuestionBank.get(qId);
+
     activeExamQuestionId = qId;
-    activeExamRoomId = roomId;
+    activeExamRoomId = resolvedRoomId;
 
     document.querySelectorAll('#examQuestionsList > div').forEach(card => {
         const cId = parseInt(card.id.replace('q-card-', ''));
@@ -975,22 +1145,24 @@ window.setActiveQuestion = (qId, roomId) => {
         }
     });
     
-    const questionCard = document.getElementById(`q-card-${qId}`);
-    if (questionCard) {
+    if (question) {
         const viewer = document.getElementById('examQuestionViewer');
-        const title = questionCard.querySelector('h3').innerText;
-        const description = questionCard.querySelector('p').innerText;
-
         viewer.innerHTML = `
-            <div class="w-full text-left"> <h2 class="text-2xl font-black text-blue-700 mb-4 text-left">${title}</h2>
-                <div class="whitespace-pre-wrap font-mono text-sm bg-white p-5 rounded-lg border border-gray-200 text-left block w-full">
-                    ${escapeHtml(description)}
+            <div class="w-full text-left">
+                <div class="flex items-center justify-between gap-4 mb-4">
+                    <h2 class="text-2xl font-black text-blue-700 text-left">${escapeHtml(question.title)}</h2>
+                    <span class="bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest">
+                        ${escapeHtml(question.total_marks || 0)} pts
+                    </span>
+                </div>
+                <div class="whitespace-pre-wrap font-mono text-sm bg-white p-5 rounded-lg border border-gray-200 text-left block w-full leading-relaxed">
+                    ${escapeHtml(question.description)}
                 </div>
             </div>
         `;
     }
 
-    const restored = restoreSavedCode(roomId, qId);
+    const restored = restoreSavedCode(resolvedRoomId, qId);
     if (!restored) {
         const cur = editorView.state.doc.toString();
         const clean = (s) => s.replace(/\s+/g, '');
@@ -1001,7 +1173,7 @@ window.setActiveQuestion = (qId, roomId) => {
         }
     }
 
-    editorView.dispatch({ effects: EditorView.editable.of(true) });
+    setEditorEditable(true);
     document.getElementById('runBtn').disabled = false;
     submitBtnEl.disabled = false;
     submitBtnEl.innerText = "Submit";
@@ -1059,7 +1231,7 @@ async function disqualifyStudent() {
     }
     document.getElementById('antiCheatModal').classList.add('hidden');
     document.getElementById('disqualifiedModal').classList.remove('hidden');
-    editorView.dispatch({ effects: EditorView.editable.of(false) });
+    setEditorEditable(false);
     document.getElementById('runBtn').disabled = true;
     clearExamSession();
 }
@@ -1073,7 +1245,7 @@ function switchToPractice() {
     currentMode = "practice";
     isExamActive = false;
     updateSubmitVisibility();
-    editorView.dispatch({ effects: EditorView.editable.of(true) });
+    setEditorEditable(true);
     document.getElementById('runBtn').disabled = false;
     
     document.getElementById('tab-exam').classList.add('hidden');
@@ -1105,19 +1277,28 @@ function showWaitingRoom(title, teacher, startTimeMs, deadlineStr) {
     // 🟢 FIX: Handle the Refresh/Fullscreen issue
     if (!document.fullscreenElement) {
         reEnterBtn.classList.remove('hidden');
-        timerContainer.classList.add('opacity-20', 'pointer-events-none'); // Dim the timer until they click
+        if (timerContainer) {
+            timerContainer.classList.add('opacity-20', 'pointer-events-none');
+        }
+    } else {
+        reEnterBtn.classList.add('hidden');
+        if (timerContainer) {
+            timerContainer.classList.remove('opacity-20', 'pointer-events-none');
+        }
     }
 
     reEnterBtn.onclick = () => {
         document.documentElement.requestFullscreen().then(() => {
             reEnterBtn.classList.add('hidden');
-            timerContainer.classList.remove('opacity-20', 'pointer-events-none');
+            if (timerContainer) {
+                timerContainer.classList.remove('opacity-20', 'pointer-events-none');
+            }
         }).catch(err => console.warn("Fullscreen request failed", err));
     };
 
     if (waitingInterval) clearInterval(waitingInterval);
 
-    waitingInterval = setInterval(() => {
+    const updateWaitingTimer = () => {
         const now = new Date().getTime();
         const distance = startTimeMs - now;
 
@@ -1131,7 +1312,10 @@ function showWaitingRoom(title, teacher, startTimeMs, deadlineStr) {
             const seconds = Math.floor((distance % (1000 * 60)) / 1000);
             timerEl.innerText = `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
         }
-    }, 1000);
+    };
+
+    updateWaitingTimer();
+    waitingInterval = setInterval(updateWaitingTimer, 1000);
 }
 
 // 🟢 BOOTSTRAP APP

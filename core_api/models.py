@@ -69,6 +69,8 @@ class Submission(models.Model):
         ('PENDING', 'Pending'),
         ('PROCESSING', 'Processing'),
         ('SUCCESS', 'Success'),
+        ('PASSED', 'Passed'),
+        ('WRONG_ANSWER', 'Wrong Answer'),
         ('EXECUTED', 'Executed'),
         ('TLE', 'Time Limit Exceeded'),
         ('MLE', 'Memory Limit Exceeded'),

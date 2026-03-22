@@ -11,6 +11,7 @@ from .views import (
     RoomSubmissionsListView,
     SubmissionUpdateView,
     SubmissionCreateView,
+    SubmissionDetailView,
     SubmissionListView,
     SubmissionDeleteView,
     ExamRoomListCreateView,
@@ -36,6 +37,7 @@ urlpatterns = [
     path('rooms/join/', join_room_view, name='join-room'),
     path('submissions/submit/', SubmissionCreateView.as_view(), name='submit-code'),
     path('submissions/', SubmissionListView.as_view(), name='submission-list'),
+    path('submissions/<int:pk>/', SubmissionDetailView.as_view(), name='submission-detail'),
     path('submissions/<int:pk>/delete/', SubmissionDeleteView.as_view(), name='submission-delete'),
     
     # ⚙️ Internal: Executor Callback
