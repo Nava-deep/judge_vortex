@@ -6,9 +6,12 @@ from kafka.admin import KafkaAdminClient, NewPartitions, NewTopic
 from execution_routing import get_all_submission_topics
 
 logging.basicConfig(level=logging.INFO)
-logging.getLogger("kafka").setLevel(logging.WARNING)
-logging.getLogger("kafka.conn").setLevel(logging.WARNING)
-logging.getLogger("kafka.client").setLevel(logging.WARNING)
+for logger_name in ("kafka", "kafka.conn", "kafka.client"):
+    kafka_logger = logging.getLogger(logger_name)
+    kafka_logger.handlers.clear()
+    kafka_logger.propagate = False
+    kafka_logger.disabled = True
+    kafka_logger.setLevel(logging.CRITICAL + 1)
 
 KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092").split(",") if server.strip()]
 KAFKA_TOPIC_PARTITIONS = max(1, int(os.getenv("KAFKA_SUBMISSIONS_TOPIC_PARTITIONS", "8")))

@@ -63,7 +63,7 @@ docker exec vortex-redis redis-cli FLUSHALL > /dev/null 2>&1
 # 5. SERVICE BOOT
 echo "Ensuring Kafka topic topology..."
 sleep 6
-KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS}" KAFKA_SUBMISSIONS_TOPIC_PARTITIONS="${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS}" python3 kafka_setup.py
+KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS}" KAFKA_SUBMISSIONS_TOPIC_PARTITIONS="${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS}" python3 kafka_setup.py 2>/dev/null
 
 echo "--------------------------------------------------------"
 echo "JUDGE VORTEX IS ONLINE"
