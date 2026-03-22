@@ -1,4 +1,25 @@
-# infrastructure/docker-compose.yml
+x-executor-common: &executor-common
+  build:
+    context: ..
+    dockerfile: executor_service/Dockerfile
+  depends_on:
+    - kafka
+  environment: &executor-common-env
+    KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    CORE_API_URL: ${CORE_API_URL:-http://host.docker.internal:53562/api}
+    EXECUTOR_BACKEND: ${EXECUTOR_BACKEND:-isolate}
+    EXECUTOR_MAX_CONCURRENCY: ${EXECUTOR_MAX_CONCURRENCY:-2}
+    EXECUTOR_MEMORY_BYTES: ${EXECUTOR_MEMORY_BYTES:-268435456}
+    EXECUTOR_COMPILE_MEMORY_BYTES: ${EXECUTOR_COMPILE_MEMORY_BYTES:-536870912}
+    EXECUTOR_MAX_OUTPUT_KB: ${EXECUTOR_MAX_OUTPUT_KB:-1024}
+    ISOLATE_BOXES: ${ISOLATE_BOXES:-32}
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  privileged: true
+  restart: unless-stopped
+  networks:
+    - vortex-net
+
 services:
   db:
     image: postgres:13
@@ -35,15 +56,86 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      # Advanced Listener config ensures the Mac host AND Docker containers can both connect
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_NUM_PARTITIONS: ${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS:-8}
     networks:
       - vortex-net
-  
+
+  executor-core:
+    <<: *executor-common
+    build:
+      context: ..
+      dockerfile: executor_service/Dockerfile
+      target: executor-core
+    environment:
+      <<: *executor-common-env
+      EXECUTOR_NAME: executor-core
+      EXECUTOR_PROMETHEUS_PORT: 8001
+      EXECUTOR_SUPPORTED_LANGUAGES: python,javascript,ruby,php,cpp,c,go,rust,typescript,sql
+      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_CORE:-code_submissions_core}
+      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_CORE:-judge_vortex_executor_core}
+
+  executor-java:
+    <<: *executor-common
+    build:
+      context: ..
+      dockerfile: executor_service/Dockerfile
+      target: executor-java
+    environment:
+      <<: *executor-common-env
+      EXECUTOR_NAME: executor-java
+      EXECUTOR_PROMETHEUS_PORT: 8002
+      EXECUTOR_SUPPORTED_LANGUAGES: java
+      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_JAVA:-code_submissions_java}
+      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_JAVA:-judge_vortex_executor_java}
+
+  executor-swift:
+    <<: *executor-common
+    build:
+      context: ..
+      dockerfile: executor_service/Dockerfile
+      target: executor-swift
+    environment:
+      <<: *executor-common-env
+      EXECUTOR_NAME: executor-swift
+      EXECUTOR_PROMETHEUS_PORT: 8003
+      EXECUTOR_SUPPORTED_LANGUAGES: swift
+      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_SWIFT:-code_submissions_swift}
+      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_SWIFT:-judge_vortex_executor_swift}
+
+  executor-haskell:
+    <<: *executor-common
+    build:
+      context: ..
+      dockerfile: executor_service/Dockerfile
+      target: executor-haskell
+    environment:
+      <<: *executor-common-env
+      EXECUTOR_NAME: executor-haskell
+      EXECUTOR_PROMETHEUS_PORT: 8004
+      EXECUTOR_SUPPORTED_LANGUAGES: haskell
+      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_HASKELL:-code_submissions_haskell}
+      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_HASKELL:-judge_vortex_executor_haskell}
+
+  executor-csharp:
+    <<: *executor-common
+    build:
+      context: ..
+      dockerfile: executor_service/Dockerfile
+      target: executor-csharp
+    environment:
+      <<: *executor-common-env
+      EXECUTOR_NAME: executor-csharp
+      EXECUTOR_PROMETHEUS_PORT: 8005
+      EXECUTOR_SUPPORTED_LANGUAGES: csharp
+      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_CSHARP:-code_submissions_csharp}
+      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_CSHARP:-judge_vortex_executor_csharp}
+
   redis:
     image: redis:6.2-alpine
     container_name: vortex-redis
@@ -51,7 +143,7 @@ services:
       - "6379:6379"
     networks:
       - vortex-net
-  
+
   nginx:
     image: nginx:alpine
     container_name: vortex-nginx

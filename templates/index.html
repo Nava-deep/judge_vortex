@@ -17,89 +17,93 @@
         }
     </script>
     <style>
-        /* A subtle tech-inspired grid background pattern */
         .bg-grid {
-            background-size: 40px 40px;
-            background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                              linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 42px 42px;
+            background-image: linear-gradient(to right, rgba(37, 99, 235, 0.06) 1px, transparent 1px),
+                              linear-gradient(to bottom, rgba(37, 99, 235, 0.06) 1px, transparent 1px);
         }
     </style>
 </head>
-<body class="bg-[#0d1117] text-gray-300 font-sans antialiased min-h-screen flex flex-col relative">
+<body class="bg-[#eef5ff] text-slate-800 font-sans antialiased min-h-screen flex flex-col relative overflow-x-hidden">
 
     <div class="absolute inset-0 bg-grid z-0 pointer-events-none"></div>
 
-    <div class="absolute top-[-10%] left-[20%] w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[120px] z-0 pointer-events-none"></div>
-    <div class="absolute top-[20%] right-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] z-0 pointer-events-none"></div>
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.14),_transparent_24%),linear-gradient(180deg,_#fbfdff,_#eef5ff_52%,_#f6faff)] z-0 pointer-events-none"></div>
+    <div class="absolute top-[-10%] left-[12%] w-[560px] h-[560px] bg-blue-400/18 rounded-full blur-[120px] z-0 pointer-events-none"></div>
+    <div class="absolute top-[18%] right-[-10%] w-[500px] h-[500px] bg-cyan-400/14 rounded-full blur-[120px] z-0 pointer-events-none"></div>
 
-    <nav class="relative z-10 border-b border-gray-800 bg-[#0d1117]/80 backdrop-blur-md">
+    <nav class="relative z-10 mx-4 mt-4 rounded-[28px] border border-white/70 bg-white/82 shadow-[0_24px_60px_-34px_rgba(37,99,235,0.35)] backdrop-blur-xl">
         <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-3">
-                <h1 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 tracking-tight">Judge Vortex</h1>
-                <span class="bg-gray-800 text-[10px] px-2 py-1 rounded text-gray-400 border border-gray-700 uppercase tracking-tighter hidden sm:block">Academic Edition</span>
+                <h1 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 tracking-tight">Judge Vortex</h1>
+                <span class="hidden rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-blue-700 sm:block">Academic Edition</span>
             </div>
             <div class="flex items-center space-x-4">
-                <a href="{% url 'login_page' %}" class="text-sm font-medium text-gray-400 hover:text-white transition">Sign In</a>
-                <a href="{% url 'register_page' %}" class="text-sm font-bold bg-white text-black px-4 py-2 rounded hover:bg-gray-200 transition shadow-lg shadow-white/10">Get Started</a>
+                <a href="{% url 'login_page' %}" class="text-sm font-semibold text-slate-500 hover:text-slate-900 transition">Sign In</a>
+                <a href="{% url 'register_page' %}" class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-[0_18px_40px_-18px_rgba(59,130,246,0.9)] transition hover:bg-blue-700">Get Started</a>
             </div>
         </div>
     </nav>
 
-    <main class="relative z-10 flex-1 flex flex-col items-center justify-center text-center px-6 py-20 mt-10">
-        <div class="inline-flex items-center space-x-2 bg-gray-900 border border-gray-800 rounded-full px-4 py-1.5 mb-8 shadow-sm">
+    <main class="relative z-10 flex-1 flex flex-col items-center justify-center px-6 py-20">
+        <div class="w-full max-w-6xl rounded-[36px] border border-white/70 bg-white/72 px-8 py-10 shadow-[0_40px_120px_-56px_rgba(37,99,235,0.3)] backdrop-blur-2xl sm:px-12 sm:py-14">
+        <div class="flex flex-col items-center text-center">
+        <div class="inline-flex items-center space-x-2 rounded-full border border-blue-100 bg-white px-4 py-1.5 mb-8 shadow-sm">
             <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-            <span class="text-xs font-mono text-gray-400">Native Execution Engine Online</span>
+            <span class="text-xs font-mono text-slate-500">Assessment Engine Online</span>
         </div>
 
-        <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl text-white">
-            Assess Code with <br class="hidden md:block"/>
-            <span class="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-400 to-purple-500">Absolute Precision.</span>
+        <h1 class="text-5xl md:text-7xl font-extrabold tracking-tight mb-6 max-w-4xl text-slate-950">
+            Run Proctored Coding Exams
+            <span class="block text-transparent bg-clip-text bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600">With Clean, Controlled Judging.</span>
         </h1>
         
-        <p class="text-lg md:text-xl text-gray-400 max-w-2xl mb-10 leading-relaxed">
-            The ultimate platform for computer science exams. Create private rooms, randomly assign questions, and auto-grade submissions in 15 different languages including C++, Rust, and SQL.
+        <p class="text-lg md:text-xl text-slate-600 max-w-3xl mb-10 leading-relaxed">
+            Create secure exam rooms, assign question pools, control schedules, monitor student progress, and evaluate submissions across multiple languages from one professional workspace.
         </p>
 
         <div class="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4">
-            <a href="{% url 'register_page' %}" class="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded shadow-lg shadow-blue-600/20 transition flex items-center justify-center">
+            <a href="{% url 'register_page' %}" class="w-full sm:w-auto px-8 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-[0_18px_40px_-18px_rgba(59,130,246,0.9)] transition flex items-center justify-center">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                 Create an Account
             </a>
-            <a href="{% url 'login_page' %}" class="w-full sm:w-auto px-8 py-3.5 bg-transparent border border-gray-700 hover:border-gray-500 text-gray-300 font-bold rounded transition text-center">
+            <a href="{% url 'login_page' %}" class="w-full sm:w-auto px-8 py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-2xl transition text-center shadow-sm">
                 Sign In to Platform
             </a>
         </div>
+        </div>
+        </div>
     </main>
 
-    <section class="relative z-10 max-w-7xl mx-auto px-6 py-20 border-t border-gray-800/50 w-full">
+    <section class="relative z-10 max-w-7xl mx-auto px-6 py-16 w-full">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             
-            <div class="bg-[#161b22] border border-gray-800 p-8 rounded-xl hover:border-blue-500/50 transition duration-300 group">
-                <div class="w-12 h-12 bg-blue-900/30 rounded-lg flex items-center justify-center mb-6 border border-blue-800/50 group-hover:bg-blue-600/20 transition">
-                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+            <div class="rounded-[28px] border border-white/70 bg-white/84 p-8 shadow-[0_24px_70px_-42px_rgba(37,99,235,0.22)] transition duration-300 group hover:-translate-y-1">
+                <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-6 border border-blue-100 bg-blue-50 transition">
+                    <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                 </div>
-                <h3 class="text-xl font-bold text-white mb-3">Teacher Dashboards</h3>
-                <p class="text-sm text-gray-400 leading-relaxed">
+                <h3 class="text-xl font-black text-slate-900 mb-3">Teacher Dashboards</h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
                     Create secure exam rooms with strict join deadlines. Add coding questions with hidden test cases and configure automated point values.
                 </p>
             </div>
 
-            <div class="bg-[#161b22] border border-gray-800 p-8 rounded-xl hover:border-purple-500/50 transition duration-300 group">
-                <div class="w-12 h-12 bg-purple-900/30 rounded-lg flex items-center justify-center mb-6 border border-purple-800/50 group-hover:bg-purple-600/20 transition">
-                    <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
+            <div class="rounded-[28px] border border-white/70 bg-white/84 p-8 shadow-[0_24px_70px_-42px_rgba(37,99,235,0.22)] transition duration-300 group hover:-translate-y-1">
+                <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-6 border border-violet-100 bg-violet-50 transition">
+                    <svg class="w-6 h-6 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path></svg>
                 </div>
-                <h3 class="text-xl font-bold text-white mb-3">Native Auto-Grading</h3>
-                <p class="text-sm text-gray-400 leading-relaxed">
-                    Zero Docker overhead. Code executes natively in milliseconds via isolated temporary environments, automatically graded against expected outputs.
+                <h3 class="text-xl font-black text-slate-900 mb-3">Exam Integrity</h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
+                    Use fullscreen-aware exam sessions, hidden judge cases, and structured room scheduling to keep assessments controlled and predictable.
                 </p>
             </div>
 
-            <div class="bg-[#161b22] border border-gray-800 p-8 rounded-xl hover:border-green-500/50 transition duration-300 group">
-                <div class="w-12 h-12 bg-green-900/30 rounded-lg flex items-center justify-center mb-6 border border-green-800/50 group-hover:bg-green-600/20 transition">
-                    <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
+            <div class="rounded-[28px] border border-white/70 bg-white/84 p-8 shadow-[0_24px_70px_-42px_rgba(37,99,235,0.22)] transition duration-300 group hover:-translate-y-1">
+                <div class="w-12 h-12 rounded-2xl flex items-center justify-center mb-6 border border-emerald-100 bg-emerald-50 transition">
+                    <svg class="w-6 h-6 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"></path></svg>
                 </div>
-                <h3 class="text-xl font-bold text-white mb-3">Clean Student Workspace</h3>
-                <p class="text-sm text-gray-400 leading-relaxed">
+                <h3 class="text-xl font-black text-slate-900 mb-3">Clean Student Workspace</h3>
+                <p class="text-sm text-slate-600 leading-relaxed">
                     A distraction-free, light-themed CodeMirror 6 environment. Students join via code, receive randomized questions, and submit instantly.
                 </p>
             </div>
@@ -107,12 +111,12 @@
         </div>
     </section>
 
-    <footer class="relative z-10 border-t border-gray-800 mt-auto">
-        <div class="max-w-7xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center text-xs text-gray-500">
+    <footer class="relative z-10 mt-auto">
+        <div class="max-w-7xl mx-auto px-6 py-8 flex flex-col md:flex-row justify-between items-center text-xs text-slate-500">
             <p>&copy; 2026 Judge Vortex. All rights reserved.</p>
             <div class="flex space-x-4 mt-4 md:mt-0">
-                <a href="#" class="hover:text-gray-400 transition">Terms</a>
-                <a href="#" class="hover:text-gray-400 transition">Privacy</a>
+                <a href="#" class="hover:text-slate-700 transition">Terms</a>
+                <a href="#" class="hover:text-slate-700 transition">Privacy</a>
             </div>
         </div>
     </footer>

@@ -1,0 +1,12 @@
+.git
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.DS_Store
+db.sqlite3
+node_modules/
+.pytest_cache/
+.mypy_cache/
+infrastructure/grafana/
+infrastructure/prometheus/data/

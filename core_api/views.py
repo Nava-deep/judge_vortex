@@ -1,6 +1,8 @@
 import json
+import os
 import random
 import logging
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -21,8 +23,41 @@ from django.views.decorators.csrf import csrf_exempt
 from .models import *
 from .serializers import *
 from .throttles import DynamicQueueThrottle
+from .judging import build_hidden_testcases, get_hidden_testcase_count, normalize_judge_output
+from execution_routing import get_submission_topic
 
 logger = logging.getLogger(__name__)
+_kafka_producer = None
+KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(",") if server.strip()]
+AUTO_DISQUALIFY_SENTINEL = "DISQUALIFIED_AUTO_SUBMIT"
+
+
+def get_kafka_producer():
+    global _kafka_producer
+    if _kafka_producer is None:
+        _kafka_producer = KafkaProducer(
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+    return _kafka_producer
+
+
+def parse_non_negative_int(value, default=0):
+    try:
+        return max(int(value), 0)
+    except (TypeError, ValueError):
+        return default
+
+
+def get_participant_solved_question_ids(participant):
+    assigned_question_ids = participant.assigned_questions.values_list('id', flat=True)
+    solved_ids = Submission.objects.filter(
+        room=participant.room,
+        user=participant.student,
+        question_id__in=assigned_question_ids,
+        status='PASSED',
+    ).values_list('question_id', flat=True).distinct()
+    return list(solved_ids)
 
 # ==========================================
 # 1. AUTHENTICATION ENDPOINTS
@@ -151,7 +186,9 @@ class RoomSubmissionsListView(APIView):
         for sub in submissions:
             data.append({
                 "id": sub.id,
+                "student_id": sub.user_id,
                 "student_name": sub.user.username, # 🟢 Grabs the actual string name!
+                "question_id": sub.question_id,
                 "status": sub.status,
                 "total_score": sub.awarded_marks,  # Ensures the score maps to the frontend
                 "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None
@@ -159,6 +196,15 @@ class RoomSubmissionsListView(APIView):
         return Response(data)
 
 class RoomQuestionDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, room_id, q_id):
+        question = get_object_or_404(ExamQuestion, id=q_id, room_id=room_id, room__teacher=request.user)
+        serializer = ExamQuestionSerializer(question, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
     def delete(self, request, room_id, q_id):
         question = get_object_or_404(ExamQuestion, id=q_id, room_id=room_id, room__teacher=request.user)
         question.delete()
@@ -171,6 +217,13 @@ class RoomDetailView(APIView):
         room = get_object_or_404(ExamRoom, pk=pk, teacher=request.user)
         serializer = ExamRoomSerializer(room)
         return Response(serializer.data)
+
+    def patch(self, request, pk):
+        room = get_object_or_404(ExamRoom, pk=pk, teacher=request.user)
+        serializer = ExamRoomSerializer(room, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk):
         # Security: Only the teacher who created the room can delete it
@@ -203,7 +256,8 @@ class RoomParticipantDeleteView(APIView):
                 {
                     'type': 'send_submission_update', 
                     'data': {
-                        'action': 'KICKED'
+                        'action': 'KICKED',
+                        'room_id': room.id
                     }
                 }
             )
@@ -211,6 +265,35 @@ class RoomParticipantDeleteView(APIView):
             logger.error(f"WebSocket Kick Broadcast Failed: {ws_error}")
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StudentRoomStateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id):
+        participant = RoomParticipant.objects.select_related('room__teacher').prefetch_related('assigned_questions').filter(
+            room_id=room_id,
+            student=request.user,
+        ).first()
+
+        if participant is None:
+            return Response({'error': 'You are not a participant in this exam room.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if participant.access_locked:
+            return Response({'error': 'Your access to this exam room has been locked.'}, status=status.HTTP_403_FORBIDDEN)
+
+        room = participant.room
+        assigned_qs = participant.assigned_questions.all()
+
+        return Response({
+            'room_title': room.title,
+            'room_id': room.id,
+            'teacher_name': room.teacher.username,
+            'start_time': room.start_time.isoformat() if getattr(room, 'start_time', None) else None,
+            'deadline': room.join_deadline.isoformat(),
+            'assigned_questions': StudentExamQuestionSerializer(assigned_qs, many=True).data,
+            'solved_question_ids': get_participant_solved_question_ids(participant),
+        }, status=status.HTTP_200_OK)
 
 
 # ==========================================
@@ -231,6 +314,8 @@ def join_room_view(request):
     # 🟢 Allow resuming the exam if they reload the page
     participant = RoomParticipant.objects.filter(room=room, student=request.user).first()
     if participant:
+        if participant.access_locked:
+            return Response({'error': 'Your access to this exam room has been locked.'}, status=status.HTTP_403_FORBIDDEN)
         assigned_qs = participant.assigned_questions.all()
         return Response({
             'message': 'Resumed room successfully!',
@@ -239,7 +324,8 @@ def join_room_view(request):
             'teacher_name': room.teacher.username, # 🟢 ADDED FOR WAITING ROOM
             'start_time': room.start_time.isoformat() if getattr(room, 'start_time', None) else None, # 🟢 ADDED FOR WAITING ROOM
             'deadline': room.join_deadline.isoformat(), 
-            'assigned_questions': ExamQuestionSerializer(assigned_qs, many=True).data
+            'assigned_questions': StudentExamQuestionSerializer(assigned_qs, many=True).data,
+            'solved_question_ids': get_participant_solved_question_ids(participant),
         }, status=status.HTTP_200_OK)
 
     # Check the strict deadline!
@@ -268,7 +354,8 @@ def join_room_view(request):
         'teacher_name': room.teacher.username, # 🟢 ADDED FOR WAITING ROOM
         'start_time': room.start_time.isoformat() if getattr(room, 'start_time', None) else None, # 🟢 ADDED FOR WAITING ROOM
         'deadline': room.join_deadline.isoformat(), 
-        'assigned_questions': ExamQuestionSerializer(assigned_qs, many=True).data
+        'assigned_questions': StudentExamQuestionSerializer(assigned_qs, many=True).data,
+        'solved_question_ids': [],
     }, status=status.HTTP_201_CREATED)
 
 # ==========================================
@@ -288,6 +375,8 @@ class SubmissionCreateView(generics.CreateAPIView):
         question_id = self.request.data.get('question_id') or None
         participant = None
         question = None
+        judge_cases = []
+        is_auto_disqualification = user_custom_input == AUTO_DISQUALIFY_SENTINEL
 
         try:
             if room_id is not None:
@@ -309,6 +398,7 @@ class SubmissionCreateView(generics.CreateAPIView):
                 raise serializers.ValidationError({
                     "error": "The selected question does not belong to this exam room."
                 })
+            judge_cases = build_hidden_testcases(question.testcase_input, question.expected_output)
             user_custom_input = question.testcase_input
 
         if room_id:
@@ -322,23 +412,32 @@ class SubmissionCreateView(generics.CreateAPIView):
                     "error": "Access Denied. You are not a registered participant of this exam room."
                 })
 
+            if participant.access_locked and not is_auto_disqualification:
+                raise serializers.ValidationError({
+                    "error": "Your access to this exam room has been locked."
+                })
+
         if question and participant and not participant.assigned_questions.filter(id=question.id).exists():
             raise serializers.ValidationError({
                 "error": "This question is not assigned to you for this exam."
             })
 
         # Save the submission to the DB
-        submission = serializer.save(
-            user=self.request.user,
-            room_id=room_id,
-            question_id=question_id
-        )
+        with transaction.atomic():
+            submission = serializer.save(
+                user=self.request.user,
+                room_id=room_id,
+                question_id=question_id,
+                passed_testcases=0,
+                total_testcases=len(judge_cases) if judge_cases else 0
+            )
+            if participant and is_auto_disqualification and not participant.access_locked:
+                participant.access_locked = True
+                participant.access_locked_at = timezone.now()
+                participant.save(update_fields=['access_locked', 'access_locked_at'])
         
         # 📨 Push to Kafka for Native Execution
-        producer = KafkaProducer(
-            bootstrap_servers=['localhost:9092'],
-            value_serializer=lambda v: json.dumps(v).encode('utf-8')
-        )
+        producer = get_kafka_producer()
         
         message = {
             'submission_id': submission.id,
@@ -347,8 +446,16 @@ class SubmissionCreateView(generics.CreateAPIView):
             'user_input': user_custom_input,
             'time_limit_ms': self.request.data.get('time_limit_ms', 10000), 
         }
-        
-        producer.send('code_submissions', message)
+        if judge_cases:
+            message['judge_cases'] = judge_cases
+
+        try:
+            submission_topic = get_submission_topic(submission.language)
+        except ValueError as exc:
+            submission.delete()
+            raise serializers.ValidationError({"error": str(exc)})
+
+        producer.send(submission_topic, message)
         producer.flush()
 
 class SubmissionUpdateView(APIView):
@@ -360,25 +467,70 @@ class SubmissionUpdateView(APIView):
             
             executor_status = request.data.get('status', submission.status)
             executor_output = request.data.get('output', submission.output)
+            raw_passed_testcases = request.data.get('passed_testcases')
+            raw_total_testcases = request.data.get('total_testcases')
+            passed_testcases = parse_non_negative_int(
+                raw_passed_testcases,
+                submission.passed_testcases
+            )
+            total_testcases = parse_non_negative_int(
+                raw_total_testcases,
+                submission.total_testcases
+            )
+            if total_testcases and passed_testcases > total_testcases:
+                passed_testcases = total_testcases
             
             final_status = executor_status
             awarded_marks = 0
             
             if executor_status == "SUCCESS" and submission.question:
-                expected = submission.question.expected_output.strip()
-                actual = executor_output.strip() if executor_output else ""
-                
-                if expected == actual:
-                    final_status = "PASSED"
-                    awarded_marks = submission.question.total_marks
+                if raw_passed_testcases is not None or raw_total_testcases is not None:
+                    if total_testcases == 0:
+                        total_testcases = max(
+                            get_hidden_testcase_count(
+                                submission.question.testcase_input,
+                                submission.question.expected_output
+                            ),
+                            1
+                        )
+                    if passed_testcases == total_testcases:
+                        final_status = "PASSED"
+                        awarded_marks = submission.question.total_marks
+                    else:
+                        final_status = "WRONG_ANSWER"
+                        awarded_marks = 0
                 else:
-                    final_status = "WRONG_ANSWER"
-                    awarded_marks = 0
+                    expected = normalize_judge_output(submission.question.expected_output)
+                    actual = normalize_judge_output(executor_output)
+                    total_testcases = max(
+                        total_testcases,
+                        get_hidden_testcase_count(
+                            submission.question.testcase_input,
+                            submission.question.expected_output
+                        ),
+                        1
+                    )
+
+                    if expected == actual:
+                        passed_testcases = total_testcases
+                        final_status = "PASSED"
+                        awarded_marks = submission.question.total_marks
+                    else:
+                        passed_testcases = 0
+                        final_status = "WRONG_ANSWER"
+                        awarded_marks = 0
+            elif submission.question and total_testcases == 0:
+                total_testcases = get_hidden_testcase_count(
+                    submission.question.testcase_input,
+                    submission.question.expected_output
+                )
 
             # Update the Database
             submission.status = final_status
             submission.output = executor_output
             submission.awarded_marks = awarded_marks
+            submission.passed_testcases = passed_testcases
+            submission.total_testcases = total_testcases
             submission.execution_time_ms = request.data.get('execution_time_ms', submission.execution_time_ms)
             submission.save()
 
@@ -391,10 +543,13 @@ class SubmissionUpdateView(APIView):
                         'type': 'send_submission_update',
                         'data': {
                             'submission_id': submission.id,
+                            'question_id': submission.question_id,
                             'status': submission.status, 
                             'output': submission.output,
                             'execution_time': submission.execution_time_ms,
-                            'awarded_marks': submission.awarded_marks
+                            'awarded_marks': submission.awarded_marks,
+                            'passed_testcases': submission.passed_testcases,
+                            'total_testcases': submission.total_testcases
                         }
                     }
                 )

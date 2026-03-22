@@ -106,14 +106,18 @@
             <button id="submitBtn" type="button" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg" style="display: none;">
                 Submit
             </button>
+
+            <button id="finishExamBtn" type="button" class="hidden bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed" disabled>
+                Finish Test
+            </button>
         </div>
 
         <button id="logoutBtn" type="button" class="text-gray-500 hover:text-red-500 text-sm font-semibold transition px-2">Log Out</button>
     </div>
 </nav>
 
-<div id="fullscreenWarning" class="absolute top-16 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-white font-bold px-6 py-2 rounded-b-lg shadow-lg z-50 transition-transform duration-300 -translate-y-24">
-    ⚠️ WARNING: You have exited full screen.
+<div id="fullscreenWarning" class="absolute top-20 left-1/2 z-50 -translate-x-1/2 rounded-full border border-amber-200 bg-white/95 px-5 py-2 text-xs font-bold uppercase tracking-[0.22em] text-amber-700 shadow-[0_16px_40px_-24px_rgba(217,119,6,0.45)] backdrop-blur transition-transform duration-300 -translate-y-32">
+    Fullscreen paused. Re-enter to continue.
 </div>
 
 <div class="relative z-10 flex-1 flex overflow-hidden w-full p-4 gap-4">
@@ -150,8 +154,15 @@
 
             <div id="examPanel" class="absolute inset-0 hidden bg-white flex flex-col">
             <div class="p-6 border-b shrink-0 bg-gray-50">
-                <h2 id="examTitle" class="text-xl font-black text-gray-800">Exam Mode Active</h2>
-                <p class="text-sm text-gray-500 mt-1">Select a question, debug with "Run Test", and click "Submit" when confident.</p>
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <h2 id="examTitle" class="text-xl font-black text-gray-800">Exam Mode Active</h2>
+                        <p class="text-sm text-gray-500 mt-1">Select a question, debug with "Run Test", and click "Submit" when confident.</p>
+                    </div>
+                    <button id="examRefreshBtn" type="button" class="inline-flex items-center rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-blue-700 shadow-sm transition hover:bg-blue-50">
+                        Refresh Questions
+                    </button>
+                </div>
             </div>
 
             <div class="flex flex-1 overflow-hidden">
@@ -171,76 +182,142 @@
     </div>
 </div>
 
-<div id="examCompletedModal" class="fixed inset-0 bg-green-900 bg-opacity-90 flex items-center justify-center hidden z-[110] backdrop-blur-md">
-    <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md text-center border-4 border-green-500">
-        <svg class="w-20 h-20 text-green-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-        <h2 class="text-3xl font-black text-gray-900 mb-2">Exam Completed!</h2>
-        <p class="text-gray-600 font-medium mb-6">You have successfully submitted all assigned questions. Your answers are locked in.</p>
-        <button onclick="window.safeExitRoom()" class="px-6 py-3 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition shadow-lg">Exit to Practice Mode</button>
-    </div>
-</div>
-
-<div id="timeUpModal" class="fixed inset-0 bg-gray-900 flex items-center justify-center hidden z-[120]">
-    <div class="text-center">
-        <h1 class="text-6xl font-black text-red-500 mb-4 tracking-tight">TIME'S UP</h1>
-        <p class="text-xl text-gray-400 max-w-lg mx-auto">The exam deadline has passed. The room is now closed and all active sessions have been terminated.</p>
-        <button onclick="window.safeExitRoom()" class="mt-8 px-6 py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-700 transition shadow-lg">Return to Practice Mode</button>
-    </div>
-</div>
-
-<div id="antiCheatModal" class="fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center hidden z-[100] backdrop-blur-md">
-    <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md text-center border-4 border-red-500 transform scale-105 transition-transform">
-        <svg class="w-20 h-20 text-red-600 mx-auto mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
-        <h2 class="text-3xl font-black text-gray-900 mb-2">TAB SWITCH DETECTED!</h2>
-        <p class="text-gray-600 font-medium mb-6">You have left the exam environment. Return immediately or your exam will be automatically locked.</p>
-        <div class="text-6xl font-black text-red-600 font-mono mb-4" id="cheatCountdownDisplay">10</div>
-        <p class="text-sm text-red-500 font-bold uppercase tracking-widest animate-pulse">Seconds Remaining</p>
-    </div>
-</div>
-
-<div id="disqualifiedModal" class="fixed inset-0 bg-gray-900 flex items-center justify-center hidden z-[110]">
-    <div class="text-center">
-        <h1 class="text-6xl font-black text-red-500 mb-4 tracking-tight">EXAM LOCKED</h1>
-        <p class="text-xl text-gray-400 max-w-lg mx-auto">You failed to return to the exam window in time. Your session has been terminated and your workspace is locked.</p>
-        <button onclick="window.safeExitRoom()" class="mt-8 px-6 py-3 bg-gray-800 text-white font-bold rounded-lg hover:bg-gray-700 transition">Return to Practice Mode</button>
-    </div>
-</div>
-
-<div id="kickedModal" class="fixed inset-0 bg-red-900 bg-opacity-90 flex items-center justify-center hidden z-[130] backdrop-blur-md text-center">
-    <div class="bg-white p-10 rounded-2xl shadow-2xl w-full max-w-md border-4 border-red-500">
-        <h2 class="text-3xl font-black text-gray-900 mb-2 uppercase">Kicked</h2>
-        <p class="text-gray-600 mb-6">The teacher has removed you from this exam session.</p>
-        <button onclick="window.safeExitRoom()" class="px-6 py-3 bg-red-600 text-white font-bold rounded-lg shadow-lg">Back to Practice</button>
-    </div>
-</div>
-
-<div id="joinRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
-    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm border border-gray-200">
-        <h2 class="text-2xl font-bold mb-4 text-gray-800">Join Exam Room</h2>
-        <form id="joinRoomForm" class="space-y-4">
-            <div>
-                <label class="block text-sm font-bold text-gray-700 mb-1">Enter 6-Digit Room Code</label>
-                <input type="text" id="roomCodeInput" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 outline-none uppercase font-mono text-center text-2xl tracking-[0.5em]" placeholder="XXXXXX" maxlength="6" required>
+<div id="timeUpModal" class="fixed inset-0 hidden z-[120] bg-slate-950/70 backdrop-blur-xl">
+    <div class="flex min-h-full items-center justify-center p-6">
+        <div class="w-full max-w-xl rounded-[32px] border border-white/10 bg-slate-900/92 p-8 text-center shadow-[0_32px_90px_-46px_rgba(15,23,42,0.75)]">
+            <div class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-rose-500/12 text-rose-300">
+                <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01m-7.938 4h15.876c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L2.33 17c-.77 1.333.192 3 1.732 3z"></path></svg>
             </div>
-            <div id="joinErrorMsg" class="text-red-600 text-sm hidden bg-red-50 p-2 rounded border border-red-200 text-center"></div>
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-rose-300">Deadline Reached</p>
+            <h1 class="mt-3 text-4xl font-black tracking-tight text-white">Time is up.</h1>
+            <p class="mt-4 text-sm leading-7 text-slate-300">The exam window has closed. Your workspace is now locked and no more submissions can be accepted for this room.</p>
+            <button onclick="window.safeExitRoom()" class="mt-7 inline-flex items-center rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-900 shadow-lg transition hover:bg-slate-100">Return to Practice</button>
+        </div>
+    </div>
+</div>
+
+<div id="antiCheatModal" class="fixed inset-0 hidden z-[100] bg-slate-950/70 backdrop-blur-xl">
+    <div class="flex min-h-full items-center justify-center p-6">
+        <div class="w-full max-w-md rounded-[30px] border border-white/70 bg-white/96 p-8 text-center shadow-[0_32px_90px_-46px_rgba(15,23,42,0.55)]">
+            <div class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-50 text-amber-600">
+                <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01m8-4A8 8 0 116 4.93"></path></svg>
+            </div>
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-amber-600">Exam Window Left</p>
+            <h2 class="mt-3 text-3xl font-black text-slate-900">Return to the exam now.</h2>
+            <p class="mt-3 text-sm leading-6 text-slate-600">The exam lost focus or the active tab was changed. Return immediately or this session will be locked automatically.</p>
+            <div class="mt-6 text-5xl font-black text-amber-600 font-mono" id="cheatCountdownDisplay">10</div>
+            <p class="mt-2 text-[11px] font-black uppercase tracking-[0.24em] text-slate-400">Seconds Remaining</p>
+        </div>
+    </div>
+</div>
+
+<div id="disqualifiedModal" class="fixed inset-0 hidden z-[110] bg-slate-950/70 backdrop-blur-xl">
+    <div class="flex min-h-full items-center justify-center p-6">
+        <div class="w-full max-w-xl rounded-[32px] border border-white/10 bg-slate-900/92 p-8 text-center shadow-[0_32px_90px_-46px_rgba(15,23,42,0.75)]">
+            <div class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-rose-500/12 text-rose-300">
+                <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-12.728 12.728M5.636 5.636l12.728 12.728"></path></svg>
+            </div>
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-rose-300">Session Locked</p>
+            <h1 class="mt-3 text-4xl font-black tracking-tight text-white">Your exam has been closed.</h1>
+            <p class="mt-4 text-sm leading-7 text-slate-300">You did not return to the exam environment before the countdown ended. The workspace is locked and the session has been terminated.</p>
+            <button onclick="window.safeExitRoom()" class="mt-7 inline-flex items-center rounded-2xl bg-white px-5 py-3 text-sm font-black text-slate-900 shadow-lg transition hover:bg-slate-100">Return to Practice</button>
+        </div>
+    </div>
+</div>
+
+<div id="kickedModal" class="fixed inset-0 hidden z-[130] bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.16),_transparent_28%),linear-gradient(180deg,_rgba(248,250,252,0.96),_rgba(237,244,255,0.96))] backdrop-blur-xl">
+    <div class="flex min-h-full items-center justify-center p-6">
+        <div class="w-full max-w-md rounded-[30px] border border-blue-100 bg-white/98 p-8 text-center shadow-[0_32px_90px_-46px_rgba(37,99,235,0.28)]">
+            <div class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-3xl bg-blue-50 text-blue-600">
+                <svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-12.728 12.728M5.636 5.636l12.728 12.728"></path></svg>
+            </div>
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-blue-600">Access Removed</p>
+            <h2 class="mt-3 text-3xl font-black text-slate-900">You have been removed from this exam.</h2>
+            <p class="mt-3 text-sm leading-6 text-slate-700">The instructor ended your access to this room. Your workspace is closed and you can return to practice mode.</p>
+            <button onclick="window.safeExitRoom()" class="mt-6 inline-flex items-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:bg-blue-700">
+                Back to Practice
+            </button>
+        </div>
+    </div>
+</div>
+
+<div id="joinRoomModal" class="fixed inset-0 hidden z-50 bg-[linear-gradient(180deg,_rgba(241,245,249,0.74),_rgba(226,238,255,0.82))] backdrop-blur-xl">
+    <div class="flex min-h-full items-center justify-center p-6">
+    <div class="w-full max-w-sm rounded-[28px] border border-white/90 bg-white/96 p-8 shadow-[0_32px_90px_-46px_rgba(37,99,235,0.24)]">
+        <p class="text-[10px] font-black uppercase tracking-[0.28em] text-blue-700">Join Room</p>
+        <h2 class="mt-3 text-3xl font-black tracking-tight text-slate-900">Enter Exam Code</h2>
+        <p class="mt-2 text-sm leading-6 text-slate-600">Use the 6-character room code shared by your instructor to enter the exam lobby.</p>
+        <form id="joinRoomForm" class="space-y-4">
+            <div class="pt-3">
+                <label class="block text-sm font-bold text-slate-700 mb-2">6-Character Room Code</label>
+                <input type="text" id="roomCodeInput" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-center font-mono text-2xl uppercase tracking-[0.45em] text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" placeholder="XXXXXX" maxlength="6" required>
+            </div>
+            <div id="joinErrorMsg" class="hidden rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-center text-sm text-red-600"></div>
             <div class="flex justify-end space-x-3 mt-6">
-                <button type="button" onclick="document.getElementById('joinRoomModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">Cancel</button>
-                <button type="submit" class="px-4 py-2 bg-purple-600 text-white font-bold rounded-lg hover:bg-purple-700 shadow-md">Join</button>
+                <button type="button" onclick="document.getElementById('joinRoomModal').classList.add('hidden')" class="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-600 transition hover:bg-slate-100">Cancel</button>
+                <button type="submit" class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:bg-blue-700">Join Exam</button>
             </div>
         </form>
     </div>
+    </div>
 </div>
 
-<div id="waitingRoomOverlay" class="fixed inset-0 bg-gray-900 flex flex-col items-center justify-center hidden z-[500] backdrop-blur-xl">
-    <svg class="w-20 h-20 text-blue-500 animate-spin mb-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-    <h1 class="text-6xl font-black text-white mb-3 tracking-tight uppercase" id="waitingRoomTitle">Exam Room</h1>
-    <p class="text-2xl text-gray-400 mb-10">Proctored by: <span id="waitingRoomTeacher" class="text-blue-400 font-bold"></span></p>
-    <button id="reEnterFullscreenBtn" class="hidden mb-8 px-8 py-4 bg-blue-600 text-white font-black rounded-2xl shadow-2xl hover:bg-blue-700 transition transform hover:scale-105 uppercase tracking-widest">
-        Click to Re-enter Fullscreen & Resume
-    </button>
-    <div id="waitingRoomTimerContainer" class="bg-gray-800 p-10 rounded-3xl border border-gray-700 shadow-2xl text-center min-w-[400px] transition-opacity duration-200">
-        <p class="text-sm text-gray-400 uppercase tracking-widest font-bold mb-4">Exam Starts In</p>
-        <div id="waitingRoomTimer" class="text-7xl font-mono font-black text-white tracking-tight">00:00:00</div>
+<div id="waitingRoomOverlay" class="fixed inset-0 hidden z-[500] overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.18),_transparent_24%),radial-gradient(circle_at_bottom_right,_rgba(59,130,246,0.14),_transparent_22%),linear-gradient(180deg,_#ffffff,_#f3f8ff_52%,_#eef5ff)] text-slate-900">
+    <div class="absolute inset-0 bg-[linear-gradient(rgba(37,99,235,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.06)_1px,transparent_1px)] bg-[size:42px_42px] opacity-60"></div>
+    <div class="absolute left-[-6rem] top-[-5rem] h-72 w-72 rounded-full bg-sky-300/22 blur-3xl"></div>
+    <div class="absolute bottom-[-8rem] right-[-4rem] h-80 w-80 rounded-full bg-blue-300/20 blur-3xl"></div>
+    <div class="relative flex min-h-full items-center justify-center p-6">
+        <div class="w-full max-w-3xl rounded-[36px] border border-white/90 bg-white/92 p-8 shadow-[0_42px_120px_-60px_rgba(37,99,235,0.26)] backdrop-blur-2xl">
+            <div class="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between">
+                <div class="max-w-xl text-left">
+                    <p class="text-[11px] font-black uppercase tracking-[0.32em] text-blue-700">Lobby</p>
+                    <h1 class="mt-4 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl" id="waitingRoomTitle">Exam Room</h1>
+                    <p class="mt-4 text-base leading-7 text-slate-700">Your exam session is reserved. Stay on this screen and keep fullscreen enabled so the workspace can unlock when the room opens.</p>
+                    <div class="mt-6 inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 shadow-sm">
+                        <span class="mr-2 h-2.5 w-2.5 rounded-full bg-blue-500"></span>
+                        Proctored by <span id="waitingRoomTeacher" class="ml-2 font-bold text-slate-900"></span>
+                    </div>
+                </div>
+                <div id="waitingRoomTimerContainer" class="w-full min-w-0 max-w-[380px] sm:max-w-[420px] overflow-hidden rounded-[30px] border border-blue-100 bg-white px-5 py-6 sm:px-7 sm:py-8 text-center shadow-[0_20px_50px_-28px_rgba(37,99,235,0.22)]">
+                    <p class="text-[11px] font-black uppercase tracking-[0.28em] text-slate-500">Exam Starts In</p>
+                    <div id="waitingRoomTimer" class="mx-auto mt-5 grid w-full max-w-[20rem] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5 sm:max-w-[21rem] sm:gap-2.5">
+                        <div class="flex min-h-[5.6rem] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-2 py-3 text-center shadow-inner shadow-slate-200/60 sm:min-h-[6.2rem] sm:px-3 sm:py-4">
+                            <div id="waitingRoomHours" class="font-black leading-none text-slate-950 tabular-nums" style="font-size: clamp(1.24rem, 4.4vw, 2.1rem);">00</div>
+                            <div class="mt-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Hrs</div>
+                        </div>
+                        <div class="pb-5 text-lg font-black text-slate-300 sm:text-xl">:</div>
+                        <div class="flex min-h-[5.6rem] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-2 py-3 text-center shadow-inner shadow-slate-200/60 sm:min-h-[6.2rem] sm:px-3 sm:py-4">
+                            <div id="waitingRoomMinutes" class="font-black leading-none text-slate-950 tabular-nums" style="font-size: clamp(1.24rem, 4.4vw, 2.1rem);">00</div>
+                            <div class="mt-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Min</div>
+                        </div>
+                        <div class="pb-5 text-lg font-black text-slate-300 sm:text-xl">:</div>
+                        <div class="flex min-h-[5.6rem] min-w-0 flex-col items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 px-2 py-3 text-center shadow-inner shadow-slate-200/60 sm:min-h-[6.2rem] sm:px-3 sm:py-4">
+                            <div id="waitingRoomSeconds" class="font-black leading-none text-slate-950 tabular-nums" style="font-size: clamp(1.24rem, 4.4vw, 2.1rem);">00</div>
+                            <div class="mt-1 text-[9px] font-black uppercase tracking-[0.18em] text-slate-400">Sec</div>
+                        </div>
+                    </div>
+                    <p class="mt-4 text-sm leading-6 text-slate-600">Fullscreen must be active before the exam workspace becomes interactive.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="fullscreenEntryModal" class="fixed inset-0 hidden z-[510] bg-[linear-gradient(180deg,_rgba(241,245,249,0.78),_rgba(226,238,255,0.82))] backdrop-blur-xl">
+    <div class="flex min-h-full items-center justify-center p-6">
+        <div class="w-full max-w-lg rounded-[30px] border border-blue-100 bg-white p-8 shadow-[0_32px_90px_-46px_rgba(37,99,235,0.24)]">
+            <p class="text-[10px] font-black uppercase tracking-[0.28em] text-blue-700">Fullscreen Required</p>
+            <h2 class="mt-3 text-3xl font-black text-slate-950">Please click to enter fullscreen.</h2>
+            <p id="fullscreenEntryMessage" class="mt-3 text-sm leading-6 text-slate-700">Enter fullscreen to continue the exam.</p>
+            <div class="mt-6 flex flex-wrap items-center gap-3">
+                <button id="fullscreenEntryBtn" class="inline-flex items-center rounded-2xl bg-blue-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:bg-blue-700">
+                    Enter Fullscreen
+                </button>
+                <button onclick="window.safeExitRoom()" class="inline-flex items-center rounded-2xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-100">
+                    Exit to Practice
+                </button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -278,6 +355,8 @@ const userId = localStorage.getItem('vortex_user_id');
 const terminalEl = document.getElementById('terminal');
 const runBtnEl = document.getElementById('runBtn');
 const submitBtnEl = document.getElementById('submitBtn');
+const finishExamBtnEl = document.getElementById('finishExamBtn');
+const examRefreshBtnEl = document.getElementById('examRefreshBtn');
 
 let currentMode = "practice"; 
 let questionVerdicts = new Map(); // Tracks state: EVALUATING, PASSED, WRONG_ANSWER
@@ -290,13 +369,15 @@ let isDisqualified = false;
 let activeExamRoomId = null;
 let activeExamQuestionId = null;
 
-// 🟢 EXAM TRACKERS & ANTI-CHEAT VARIABLES
+// EXAM TRACKERS & ANTI-CHEAT VARIABLES
 let totalAssignedQuestions = 0;
 let examDeadlineTime = null;
 let deadlineInterval = null;
 let waitingInterval = null;
 let cheatTimer = null;         // FIXED: Added variable declaration
 let cheatCountdown = 10;       // FIXED: Added variable declaration
+let examStateRefreshInFlight = false;
+let lastExamStateSignature = null;
 
 /* Boilerplates */
 const boilerplate = {
@@ -413,7 +494,7 @@ function escapeHtml(unsafe) {
       .replace(/'/g, "&#039;");
 }
 
-/* 🟢 BULLETPROOF DATE PARSER */
+/* BULLETPROOF DATE PARSER */
 function parseSafeDate(dateStr) {
     if (!dateStr) return new Date().getTime();
     let t = new Date(dateStr).getTime();
@@ -429,9 +510,22 @@ function isTerminalSubmissionStatus(status) {
     return !['PENDING', 'PROCESSING'].includes(String(status || '').toUpperCase());
 }
 
+function normalizeVerdictStatus(status) {
+    const normalized = String(status || '').toUpperCase();
+    return normalized === 'SUCCESS' ? 'PASSED' : normalized;
+}
+
+function isSolvedVerdict(status) {
+    return normalizeVerdictStatus(status) === 'PASSED';
+}
+
+function getQuestionMeta(questionId) {
+    return assignedQuestionBank.get(Number(questionId)) || null;
+}
+
 function getSubmissionStatusTone(status) {
-    const normalizedStatus = String(status || 'PENDING').toUpperCase();
-    if (normalizedStatus === 'PASSED' || normalizedStatus === 'SUCCESS') {
+    const normalizedStatus = normalizeVerdictStatus(status || 'PENDING');
+    if (normalizedStatus === 'PASSED') {
         return {
             textClass: 'text-green-700',
             badgeClass: 'bg-green-50 text-green-700 border-green-200'
@@ -449,23 +543,69 @@ function getSubmissionStatusTone(status) {
     };
 }
 
-function renderSubmissionOutput(submission) {
-    const normalizedStatus = String(submission.status || submission.result || 'PENDING').toUpperCase();
+function renderSubmissionOutput(submission, questionId = null) {
+    const normalizedStatus = normalizeVerdictStatus(submission.status || submission.result || 'PENDING');
     const output = submission.output || submission.stdout || submission.message || '';
-    const executionTime = submission.execution_time_ms ?? submission.execution_time ?? null;
     const tone = getSubmissionStatusTone(normalizedStatus);
+    const isWaitingForJudgeOutput = ['PENDING', 'PROCESSING', 'EVALUATING'].includes(normalizedStatus);
+    const displayOutput = output || (isWaitingForJudgeOutput ? 'Waiting for output...' : 'No output');
+    const resolvedQuestionId = Number(questionId || submission.question_id || submission.question || 0) || null;
+    const submissionRoomId = Number(submission.room_id || submission.room || 0) || null;
+    const questionMeta = getQuestionMeta(resolvedQuestionId);
+    const totalTestcases = Number(submission.total_testcases ?? questionMeta?.testcase_count ?? 0) || 0;
+    const passedTestcases = Math.min(
+        totalTestcases,
+        Number(submission.passed_testcases ?? (normalizedStatus === 'PASSED' && totalTestcases ? totalTestcases : 0)) || 0
+    );
+    const hasJudgeCounts = totalTestcases > 0;
+    const isAssignedExamQuestion = Boolean(resolvedQuestionId && assignedQuestionBank.has(resolvedQuestionId));
+    const isCurrentExamRoomSubmission = Boolean(activeExamRoomId && submissionRoomId && Number(activeExamRoomId) === Number(submissionRoomId));
+    const showOnlyTestcaseSummary = Boolean(hasJudgeCounts && (isCurrentExamRoomSubmission || (currentMode === 'exam' && isAssignedExamQuestion)));
+    const testcaseSummaryPassed = hasJudgeCounts && passedTestcases === totalTestcases && totalTestcases > 0;
+    const testcaseSummaryClass = testcaseSummaryPassed ? 'text-emerald-600' : 'text-rose-600';
+    const testcaseSummaryLabelClass = testcaseSummaryPassed ? 'text-emerald-500' : 'text-rose-500';
 
     terminalEl.innerHTML = `
-        <div class="flex items-center justify-between gap-3 mb-4 pb-3 border-b border-gray-200">
-            <span class="inline-flex items-center px-3 py-1 rounded-full border text-[11px] font-black uppercase tracking-widest ${tone.badgeClass}">
-                ${escapeHtml(normalizedStatus.replace(/_/g, ' '))}
-            </span>
-            <span class="text-[11px] font-mono text-gray-400">
-                ${executionTime === null ? 'Waiting for result...' : `${escapeHtml(executionTime)} ms`}
-            </span>
+        <div class="grid gap-4 ${hasJudgeCounts && !showOnlyTestcaseSummary ? 'xl:grid-cols-2' : ''}">
+            ${hasJudgeCounts ? `
+                <div class="rounded-2xl bg-slate-50/80 p-4">
+                    <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Testcases</p>
+                    <div class="mt-3 flex items-end gap-3">
+                        <span class="text-4xl font-black tabular-nums ${testcaseSummaryClass}">${escapeHtml(passedTestcases)}/${escapeHtml(totalTestcases)}</span>
+                        <span class="pb-1 text-xs font-black uppercase tracking-[0.22em] ${testcaseSummaryLabelClass}">Passed</span>
+                    </div>
+                </div>
+            ` : ''}
+            ${showOnlyTestcaseSummary ? '' : `
+            <div class="px-1 py-1">
+                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">${hasJudgeCounts ? 'Judge Output' : 'Program Output'}</p>
+                <pre class="mt-3 whitespace-pre-wrap break-words font-mono text-sm leading-6 ${tone.textClass}">${escapeHtml(displayOutput)}</pre>
+            </div>
+            `}
         </div>
-        <pre class="whitespace-pre-wrap break-words font-mono text-sm ${tone.textClass}">${escapeHtml(output || 'No output')}</pre>
     `;
+}
+
+function renderExamSubmissionPlaceholder(questionId) {
+    const questionMeta = getQuestionMeta(questionId);
+    const totalTestcases = Number(questionMeta?.testcase_count ?? 0) || 0;
+
+    if (totalTestcases > 0) {
+        terminalEl.innerHTML = `
+            <div class="grid gap-4">
+                <div class="rounded-2xl bg-slate-50/80 p-4">
+                    <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Testcases</p>
+                    <div class="mt-3 flex items-end gap-3">
+                        <span class="text-4xl font-black text-slate-900 tabular-nums">0/${escapeHtml(totalTestcases)}</span>
+                        <span class="pb-1 text-xs font-black uppercase tracking-[0.22em] text-slate-400">Evaluating</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    terminalEl.innerHTML = '<div class="text-yellow-600 italic font-mono text-sm animate-pulse">Evaluating against judge testcases...</div>';
 }
 
 function clearSubmissionTracking(submissionId) {
@@ -505,11 +645,11 @@ function handleSubmissionResolution(submission) {
     const submissionId = Number(submission.submission_id || submission.id);
     if (!submissionId) return;
 
-    const normalizedStatus = String(submission.status || submission.result || 'PENDING').toUpperCase();
-    renderSubmissionOutput(submission);
+    const normalizedStatus = normalizeVerdictStatus(submission.status || submission.result || 'PENDING');
+    const questionId = Number(submission.question_id || submission.question || pendingEvaluations.get(submissionId) || 0) || null;
+    renderSubmissionOutput(submission, questionId);
 
-    if (pendingEvaluations.has(submissionId) && isTerminalSubmissionStatus(normalizedStatus)) {
-        const questionId = pendingEvaluations.get(submissionId);
+    if (pendingEvaluations.has(submissionId) && isTerminalSubmissionStatus(normalizedStatus) && questionId) {
         applyQuestionVerdict(questionId, normalizedStatus);
         pendingEvaluations.delete(submissionId);
     }
@@ -592,8 +732,19 @@ if (socket) {
 
         const action = payload.action || (payload.data && payload.data.action);
         if (action === 'KICKED') {
+            const kickRoomId = Number(payload.room_id || (payload.data && payload.data.room_id) || 0) || null;
+            const shouldHandleKick = isExamActive && activeExamRoomId && (!kickRoomId || Number(activeExamRoomId) === kickRoomId);
+            if (!shouldHandleKick) {
+                return;
+            }
             document.getElementById('kickedModal').classList.remove('hidden');
             if (deadlineInterval) clearInterval(deadlineInterval);
+            stopCheatTimer();
+            hideFullscreenEntryGate();
+            isExamActive = false;
+            activeExamRoomId = null;
+            activeExamQuestionId = null;
+            document.getElementById('examTimerDisplay').classList.add('hidden');
             clearExamSession();
             return;
         }
@@ -636,7 +787,7 @@ function restoreSavedCode(roomId, qId) {
 }
 
 /* -------------------------
-   🟢 SESSION PERSISTENCE 
+   SESSION PERSISTENCE 
    ------------------------- */
 function saveExamSession(roomCode) {
     localStorage.setItem('vortex_active_room_code', roomCode);
@@ -649,6 +800,95 @@ function clearExamSession() {
     pendingEvaluations.clear();
     assignedQuestionBank.clear();
     clearAllSubmissionTracking();
+    lastExamStateSignature = null;
+    examStateRefreshInFlight = false;
+}
+
+function getExamStateSignature(data) {
+    const questions = Array.isArray(data?.assigned_questions) ? data.assigned_questions : [];
+    const solvedQuestionIds = Array.isArray(data?.solved_question_ids)
+        ? data.solved_question_ids.map((questionId) => Number(questionId || 0) || 0).filter(Boolean).sort((a, b) => a - b)
+        : [];
+    return JSON.stringify({
+        room_id: data?.room_id || null,
+        room_title: data?.room_title || '',
+        teacher_name: data?.teacher_name || '',
+        start_time: data?.start_time || null,
+        deadline: data?.deadline || null,
+        solved_question_ids: solvedQuestionIds,
+        assigned_questions: questions.map((question) => ({
+            id: question.id,
+            title: question.title,
+            description: question.description,
+            total_marks: question.total_marks,
+            testcase_count: question.testcase_count,
+        })),
+    });
+}
+
+async function fetchJoinedExamState(roomCode) {
+    const response = await fetch('/api/rooms/join/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+        body: JSON.stringify({ room_code: roomCode })
+    });
+ 
+    const data = await readJsonSafe(response);
+    return { ok: response.ok, status: response.status, data };
+}
+
+async function fetchExamState(roomId) {
+    const response = await fetch(`/api/rooms/${roomId}/state/`, {
+        method: 'GET',
+        headers: { 'Authorization': `Token ${token}` }
+    });
+
+    const data = await readJsonSafe(response);
+    return { ok: response.ok, status: response.status, data };
+}
+
+async function refreshExamState() {
+    if (!activeExamRoomId || examStateRefreshInFlight || currentMode !== 'exam' || isDisqualified) return;
+    examStateRefreshInFlight = true;
+    examRefreshBtnEl.disabled = true;
+    examRefreshBtnEl.innerText = 'Refreshing...';
+    examRefreshBtnEl.className = 'inline-flex items-center rounded-xl border border-blue-100 bg-blue-50 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-blue-700 shadow-sm transition cursor-wait';
+
+    try {
+        const roomId = activeExamRoomId;
+        const { ok, status, data } = await fetchExamState(roomId);
+        if (!ok) {
+            if (status === 403 || status === 404) {
+                if (currentMode === 'exam' && Number(activeExamRoomId) === Number(roomId)) {
+                    document.getElementById('kickedModal').classList.remove('hidden');
+                    if (deadlineInterval) clearInterval(deadlineInterval);
+                    stopCheatTimer();
+                    hideFullscreenEntryGate();
+                    isExamActive = false;
+                    activeExamRoomId = null;
+                    activeExamQuestionId = null;
+                    document.getElementById('examTimerDisplay').classList.add('hidden');
+                    clearExamSession();
+                }
+            }
+            return;
+        }
+
+        if (Number(activeExamRoomId) !== Number(roomId)) {
+            return;
+        }
+
+        const signature = getExamStateSignature(data);
+        if (signature !== lastExamStateSignature) {
+            renderExamMode(data, localStorage.getItem('vortex_active_room_code') || '', { preserveSelection: true, preserveTab: true });
+        }
+    } catch (err) {
+    } finally {
+        examStateRefreshInFlight = false;
+        examRefreshBtnEl.disabled = false;
+        examRefreshBtnEl.innerText = 'Refresh Questions';
+        examRefreshBtnEl.className = 'inline-flex items-center rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-blue-700 shadow-sm transition hover:bg-blue-50';
+    }
 }
 
 async function resumeActiveExam() {
@@ -656,16 +896,19 @@ async function resumeActiveExam() {
     if (!savedRoomCode) return;
 
     try {
-        const res = await fetch('/api/rooms/join/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-            body: JSON.stringify({ room_code: savedRoomCode })
-        });
-        const data = await res.json();
-        if (res.ok) {
+        const { ok, data } = await fetchJoinedExamState(savedRoomCode);
+        if (ok) {
             renderExamMode(data, savedRoomCode);
             const savedVerdicts = JSON.parse(localStorage.getItem('vortex_question_verdicts') || '{}');
-            questionVerdicts = new Map(Object.entries(savedVerdicts).map(([k, v]) => [parseInt(k), v]));
+            questionVerdicts = new Map(Array.from(questionVerdicts.entries()));
+            Object.entries(savedVerdicts).forEach(([questionId, verdict]) => {
+                const numericQuestionId = parseInt(questionId, 10);
+                if (!assignedQuestionBank.has(numericQuestionId)) return;
+                const previousVerdict = normalizeVerdictStatus(questionVerdicts.get(numericQuestionId) || '');
+                const nextVerdict = normalizeVerdictStatus(verdict);
+                if (previousVerdict === 'PASSED' && nextVerdict !== 'PASSED') return;
+                questionVerdicts.set(numericQuestionId, verdict);
+            });
             questionVerdicts.forEach((status, qId) => {
                 applyQuestionVerdict(qId, status, true);
             });
@@ -675,16 +918,29 @@ async function resumeActiveExam() {
     } catch(err) { }
 }
 
-function renderExamMode(data, code) {
+function renderExamMode(data, code, options = {}) {
+    const preserveSelection = options.preserveSelection === true;
+    const preserveTab = options.preserveTab === true;
+    const previousActiveQuestionId = preserveSelection ? activeExamQuestionId : null;
+    const previousRoomId = preserveSelection ? activeExamRoomId : null;
+    const previousTab = preserveTab
+        ? (examPanel.classList.contains('hidden') ? (historyPanel.classList.contains('hidden') ? 'console' : 'history') : 'exam')
+        : 'exam';
+
     document.getElementById('joinRoomModal').classList.add('hidden');
+    if (preserveSelection && previousActiveQuestionId && previousRoomId) {
+        persistCurrentCode();
+    }
     assignedQuestionBank.clear();
     if (deadlineInterval) clearInterval(deadlineInterval);
     if (waitingInterval) clearInterval(waitingInterval);
     document.getElementById('waitingRoomOverlay').classList.add('hidden');
     activeExamRoomId = data.room_id;
+    activeExamQuestionId = preserveSelection ? previousActiveQuestionId : null;
     currentMode = "exam";
     isExamActive = true;
     isDisqualified = false;
+    lastExamStateSignature = getExamStateSignature(data);
     updateSubmitVisibility();
 
     totalAssignedQuestions = data.assigned_questions.length;
@@ -695,26 +951,57 @@ function renderExamMode(data, code) {
     data.assigned_questions.forEach((q, index) => {
         assignedQuestionBank.set(q.id, q);
         qList.innerHTML += `
-            <div id="q-card-${q.id}" class="bg-white border-2 border-gray-200 p-4 rounded-xl shadow-sm relative transition flex flex-col hover:border-blue-300">
+            <div id="q-card-${q.id}" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition flex flex-col">
                 <div class="flex justify-between items-center mb-3">
-                    <span class="bg-gray-100 text-gray-500 text-[10px] font-black px-2 py-1 rounded uppercase tracking-wider">Q${index + 1}</span>
-                    <span id="q-badge-${q.id}" class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Unattempted</span>
+                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Q${index + 1}</span>
+                    <span id="q-badge-${q.id}" class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Unattempted</span>
                 </div>
-                <h3 class="font-bold text-gray-800 text-base mb-1 line-clamp-1 text-left">${escapeHtml(q.title)}</h3>
-                <p class="text-xs text-gray-500 mb-4 line-clamp-2 flex-1 text-left">${escapeHtml(q.description)}</p>
-                <button id="lock-btn-${q.id}" onclick="window.setActiveQuestion(${q.id}, ${data.room_id})" class="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-sm">
+                <h3 class="mb-1 line-clamp-1 text-left text-base font-black text-slate-800">${escapeHtml(q.title)}</h3>
+                <p class="mb-4 flex-1 line-clamp-3 text-left text-xs leading-5 text-slate-500">${escapeHtml(q.description)}</p>
+                <div class="mb-4 inline-flex items-center self-start rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(q.testcase_count || 1)} Testcases</div>
+                <button id="lock-btn-${q.id}" onclick="window.setActiveQuestion(${q.id}, ${data.room_id})" class="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-center text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-100">
                     Open Editor
                 </button>
             </div>
         `;
     });
 
+    const validQuestionIds = new Set(data.assigned_questions.map((question) => question.id));
+    questionVerdicts = new Map(
+        Array.from(questionVerdicts.entries()).filter(([questionId]) => validQuestionIds.has(questionId))
+    );
+    const solvedQuestionIds = Array.isArray(data?.solved_question_ids) ? data.solved_question_ids : [];
+    solvedQuestionIds.forEach((questionId) => {
+        const numericQuestionId = Number(questionId || 0) || null;
+        if (numericQuestionId && validQuestionIds.has(numericQuestionId)) {
+            questionVerdicts.set(numericQuestionId, 'PASSED');
+        }
+    });
+    localStorage.setItem('vortex_question_verdicts', JSON.stringify(Object.fromEntries(questionVerdicts)));
+
+    if (activeExamQuestionId && !assignedQuestionBank.has(activeExamQuestionId)) {
+        activeExamQuestionId = null;
+    }
+
+    assignedQuestionBank.forEach((_, questionId) => renderQuestionCardState(questionId));
+
     setTimeout(() => {
         document.getElementById('tab-exam').classList.remove('hidden');
-        tabExam.click();
+        if (activeExamQuestionId && assignedQuestionBank.has(activeExamQuestionId)) {
+            window.setActiveQuestion(activeExamQuestionId, data.room_id, { focusExamTab: !preserveTab || previousTab === 'exam' });
+        } else if (preserveSelection && assignedQuestionBank.size > 0 && (!preserveTab || previousTab === 'exam')) {
+            const [firstQuestionId] = assignedQuestionBank.keys();
+            window.setActiveQuestion(firstQuestionId, data.room_id);
+        } else if (!preserveTab || previousTab === 'exam') {
+            tabExam.click();
+        } else if (previousTab === 'history') {
+            tabHistory.click();
+        } else {
+            tabConsole.click();
+        }
     }, 100);
 
-    // 🟢 WAITING ROOM CHECK
+    // WAITING ROOM CHECK
     if (data.start_time) {
         const startTimeMs = parseSafeDate(data.start_time);
         const nowMs = new Date().getTime();
@@ -728,6 +1015,9 @@ function renderExamMode(data, code) {
     if(data.deadline) {
         startExamDeadlineCountdown(data.deadline);
     }
+
+    refreshExamActionState();
+    syncFullscreenRequirement();
 }
 
 /* -------------------------
@@ -736,13 +1026,36 @@ function renderExamMode(data, code) {
 function updateSubmitVisibility() {
     if (currentMode === "exam") {
         submitBtnEl.style.display = "inline-flex";
+        finishExamBtnEl.classList.remove('hidden');
+        examRefreshBtnEl.classList.remove('hidden');
     } else {
         submitBtnEl.style.display = "none";
+        finishExamBtnEl.classList.add('hidden');
+        examRefreshBtnEl.classList.add('hidden');
+    }
+}
+
+function updateFinishButtonState(completed = false) {
+    if (currentMode !== 'exam' || !isExamActive) {
+        finishExamBtnEl.disabled = true;
+        finishExamBtnEl.innerText = 'Finish Test';
+        finishExamBtnEl.className = 'hidden bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
+        return;
+    }
+
+    finishExamBtnEl.classList.remove('hidden');
+    finishExamBtnEl.disabled = !completed;
+    finishExamBtnEl.innerText = 'Finish Test';
+
+    if (completed) {
+        finishExamBtnEl.className = 'bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
+    } else {
+        finishExamBtnEl.className = 'bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
     }
 }
 
 /* -------------------------
-   🟢 Run Button (LOCAL SCRATCHPAD ONLY)
+   Run Button (LOCAL SCRATCHPAD ONLY)
    ------------------------- */
 runBtnEl.onclick = async (e) => {
     e.preventDefault();
@@ -786,7 +1099,7 @@ runBtnEl.onclick = async (e) => {
 };
 
 /* -------------------------
-   🟢 Final Submit (EVALUATE AND COLOR, NO LOCKING)
+   Final Submit (EVALUATE AND COLOR, NO LOCKING)
    ------------------------- */
 submitBtnEl.onclick = async (e) => {
     e.preventDefault();
@@ -795,7 +1108,7 @@ submitBtnEl.onclick = async (e) => {
 
     applyQuestionVerdict(activeExamQuestionId, 'EVALUATING');
     document.getElementById('tab-console').click();
-    terminalEl.innerHTML = `<div class="text-yellow-600 italic font-mono text-sm animate-pulse">Evaluating against hidden test cases...</div>`;
+    renderExamSubmissionPlaceholder(activeExamQuestionId);
 
     try {
         const res = await fetch('/api/submissions/submit/', {
@@ -828,6 +1141,15 @@ submitBtnEl.onclick = async (e) => {
         terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submission Network Error.</div>`;
         applyQuestionVerdict(activeExamQuestionId, 'ERROR');
     }
+};
+
+finishExamBtnEl.onclick = () => {
+    if (finishExamBtnEl.disabled) return;
+    window.safeExitRoom();
+};
+
+examRefreshBtnEl.onclick = () => {
+    refreshExamState();
 };
 
 document.addEventListener('keydown', (e) => {
@@ -876,7 +1198,7 @@ tabExam.onclick = () => {
 };
 
 /* -------------------------
-   🟢 History logic
+   History logic
    ------------------------- */
 async function fetchHistory() {
     const listEl = document.getElementById('historyList');
@@ -887,9 +1209,14 @@ async function fetchHistory() {
         listEl.innerHTML = ''; submissionCache = {};
         
         let historyData = Array.isArray(data) ? data : data.results || [];
+        const isExamHistoryView = isExamActive && activeExamRoomId;
+        const activeRoomId = Number(activeExamRoomId || 0) || null;
         
-        if (isExamActive && activeExamRoomId) {
-            historyData = historyData.filter(sub => sub.room_id === activeExamRoomId || sub.room === activeExamRoomId);
+        if (isExamHistoryView && activeRoomId) {
+            historyData = historyData.filter(sub => {
+                const submissionRoomId = Number(sub.room_id || sub.room || 0) || null;
+                return submissionRoomId === activeRoomId;
+            });
         } else {
             historyData = historyData.filter(sub => !sub.room && !sub.room_id);
         }
@@ -901,6 +1228,9 @@ async function fetchHistory() {
 
         historyData.forEach(sub => {
             const statusColor = sub.status === "SUCCESS" || sub.status === "PASSED" ? "text-green-600" : "text-red-600";
+            const submissionQuestionId = Number(sub.question_id || sub.question || 0) || null;
+            const questionMeta = submissionQuestionId ? getQuestionMeta(submissionQuestionId) : null;
+            const questionLabel = questionMeta?.title ? escapeHtml(questionMeta.title) : 'Practice Submission';
             submissionCache[sub.id] = sub;
             listEl.innerHTML += `
             <div data-id="${sub.id}" class="history-row p-4 hover:bg-gray-50 border-l-4 ${statusColor.includes('green') ? 'border-green-500' : 'border-red-500'} group relative cursor-pointer transition-colors">
@@ -909,13 +1239,16 @@ async function fetchHistory() {
                     <span class="text-[10px] text-gray-400 font-mono">${new Date(sub.submitted_at).toLocaleString()}</span>
                 </div>
                 <div class="flex justify-between items-center text-xs">
-                    <div class="flex space-x-2">
+                    <div class="flex flex-wrap items-center gap-2">
                         <span class="text-blue-600 font-mono font-bold">${sub.language}</span>
+                        <span class="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${questionLabel}</span>
                         <span class="text-gray-500 font-mono">${sub.execution_time_ms || 0}ms</span>
                     </div>
+                    ${isExamHistoryView ? '' : `
                     <button data-del="${sub.id}" class="del-btn text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
                         <svg class="w-4 h-4 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </button>
+                    `}
                 </div>
             </div>`;
         });
@@ -927,6 +1260,12 @@ async function fetchHistory() {
 function loadPastCode(id) {
     const sub = submissionCache[id];
     if (!sub || !sub.code) return;
+
+    const submissionQuestionId = Number(sub.question_id || sub.question || 0) || null;
+    if (isExamActive && activeExamRoomId && submissionQuestionId && assignedQuestionBank.has(submissionQuestionId)) {
+        window.setActiveQuestion(submissionQuestionId, activeExamRoomId, { focusExamTab: false });
+    }
+
     document.getElementById('language').value = sub.language;
     editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(sub.language)) });
     editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: sub.code} });
@@ -934,6 +1273,7 @@ function loadPastCode(id) {
 }
 
 async function deleteSubmission(id) {
+    if (isExamActive) return;
     if (confirm("Delete record?")) {
         await fetch(`/api/submissions/${id}/delete/`, { method: 'DELETE', headers: { 'Authorization': `Token ${token}` }});
         fetchHistory();
@@ -985,80 +1325,173 @@ document.getElementById('joinRoomForm').addEventListener('submit', async (e) => 
 /* -------------------------
    Dynamic Verdict Styling
    ------------------------- */
-function applyQuestionVerdict(qId, status, isRestore = false) {
-    if (!qId) return;
-    questionVerdicts.set(qId, status); 
-
-    if (!isRestore) localStorage.setItem('vortex_question_verdicts', JSON.stringify(Object.fromEntries(questionVerdicts)));
-
+function renderQuestionCardState(qId) {
     const qCard = document.getElementById(`q-card-${qId}`);
     const badge = document.getElementById(`q-badge-${qId}`);
     const btn = document.getElementById(`lock-btn-${qId}`);
+    if (!qCard || !badge || !btn) return;
 
-    let borderColor = 'border-gray-200';
-    let bgColor = 'bg-white';
-    let badgeClass = 'text-gray-400';
-    let badgeText = status;
-    let btnClass = 'bg-gray-100 text-gray-500 border-gray-200';
+    const verdict = normalizeVerdictStatus(questionVerdicts.get(qId) || '');
+    const isActive = activeExamQuestionId === qId;
 
-    if (status === 'EVALUATING') {
-        borderColor = 'border-yellow-400'; bgColor = 'bg-yellow-50';
-        badgeClass = 'text-yellow-600 animate-pulse'; badgeText = 'Evaluating...';
-        btnClass = 'bg-yellow-100 text-yellow-700 border-yellow-200';
-    } else if (status === 'PASSED' || status === 'SUCCESS') {
-        borderColor = 'border-green-500'; bgColor = 'bg-green-50';
-        badgeClass = 'text-green-600'; badgeText = '✓ PASSED';
-        btnClass = 'bg-green-500 text-white border-green-600';
-    } else if (status === 'ERROR' || status === 'SYSTEM_ERROR') {
-        borderColor = 'border-red-500'; bgColor = 'bg-red-50';
-        badgeClass = 'text-red-600'; badgeText = 'Server Error (Try again)';
-        btnClass = 'bg-blue-600 text-white border-blue-700'; 
-    } else {
-        borderColor = 'border-red-500'; bgColor = 'bg-red-50';
-        badgeClass = 'text-red-600'; badgeText = '✗ ' + status.replace(/_/g, ' ');
-        btnClass = 'bg-red-500 text-white border-red-600';
+    let cardClass = 'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition flex flex-col';
+    let badgeClass = 'text-[10px] font-bold uppercase tracking-widest text-slate-400';
+    let badgeText = 'Unattempted';
+    let buttonText = isActive ? 'Currently Solving' : 'Open Editor';
+    let buttonClass = isActive
+        ? 'w-full rounded-xl border border-blue-700 bg-blue-600 px-4 py-2.5 text-center text-xs font-black text-white shadow-md transition'
+        : 'w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-center text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-100';
+
+    if (verdict === 'EVALUATING') {
+        cardClass = 'rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm transition flex flex-col';
+        badgeClass = 'text-[10px] font-bold uppercase tracking-widest text-amber-600 animate-pulse';
+        badgeText = 'Evaluating';
+        buttonText = 'Judging...';
+        buttonClass = 'w-full rounded-xl border border-amber-200 bg-amber-100 px-4 py-2.5 text-center text-xs font-black text-amber-700 shadow-sm transition';
+    } else if (verdict === 'PASSED') {
+        cardClass = 'rounded-2xl border border-emerald-300 bg-emerald-50 p-4 shadow-sm transition flex flex-col';
+        badgeClass = 'text-[10px] font-bold uppercase tracking-widest text-emerald-700';
+        badgeText = 'Solved';
+        buttonText = isActive ? 'Solved' : 'Review Solution';
+        buttonClass = 'w-full rounded-xl border border-emerald-700 bg-emerald-600 px-4 py-2.5 text-center text-xs font-black text-white shadow-md transition';
+    } else if (verdict) {
+        cardClass = 'rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm transition flex flex-col';
+        badgeClass = 'text-[10px] font-bold uppercase tracking-widest text-rose-600';
+        badgeText = verdict.replace(/_/g, ' ');
+        buttonText = isActive ? 'Continue Solving' : 'Retry';
+        buttonClass = isActive
+            ? 'w-full rounded-xl border border-blue-700 bg-blue-600 px-4 py-2.5 text-center text-xs font-black text-white shadow-md transition'
+            : 'w-full rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-center text-xs font-black text-rose-700 shadow-sm transition hover:bg-rose-100';
     }
 
-    if (qCard) qCard.className = `border-2 ${borderColor} ${bgColor} p-4 rounded-xl shadow-sm relative transition flex flex-col`;
-    if (badge) {
-        badge.className = `text-[10px] font-bold uppercase tracking-widest ${badgeClass}`;
-        badge.innerText = badgeText;
-    }
-    
-    if (btn) {
-        btn.innerText = (activeExamQuestionId === qId) ? "Currently Solving..." : "Open Editor";
-        btn.disabled = false;
-        btn.className = `text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center ${btnClass}`;
+    if (isActive && verdict !== 'PASSED' && verdict !== 'EVALUATING') {
+        cardClass = `${cardClass} ring-2 ring-blue-200`;
     }
 
-    if (activeExamQuestionId === qId) {
+    qCard.className = cardClass;
+    badge.className = badgeClass;
+    badge.innerText = badgeText;
+    btn.className = buttonClass;
+    btn.disabled = verdict === 'EVALUATING';
+    btn.innerText = buttonText;
+}
+
+function refreshExamActionState() {
+    const waitingVisible = !document.getElementById('waitingRoomOverlay').classList.contains('hidden');
+    const fullscreenBlocked = isExamActive && !document.fullscreenElement;
+    const hasActiveQuestion = Boolean(activeExamQuestionId);
+    const activeVerdict = normalizeVerdictStatus(questionVerdicts.get(activeExamQuestionId) || '');
+
+    if (!isExamActive || currentMode !== 'exam') {
         setEditorEditable(true);
-        document.getElementById('runBtn').disabled = false;
-        if (submitBtnEl) {
-            submitBtnEl.disabled = false; 
-            submitBtnEl.innerText = "Submit";
-            submitBtnEl.className = "bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg";
-        }
+        runBtnEl.disabled = false;
+        submitBtnEl.disabled = false;
+        submitBtnEl.innerText = 'Submit';
+        submitBtnEl.className = 'bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
+        updateFinishButtonState(false);
+        return;
     }
 
+    if (waitingVisible || fullscreenBlocked) {
+        setEditorEditable(false);
+        runBtnEl.disabled = true;
+        submitBtnEl.disabled = true;
+        submitBtnEl.innerText = 'Submit';
+        submitBtnEl.className = 'bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
+        updateFinishButtonState(false);
+        return;
+    }
+
+    if (!hasActiveQuestion) {
+        setEditorEditable(false);
+        runBtnEl.disabled = true;
+        submitBtnEl.disabled = true;
+        submitBtnEl.innerText = 'Select a Question';
+        submitBtnEl.className = 'bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
+        updateFinishButtonState(false);
+        return;
+    }
+
+    setEditorEditable(true);
+    runBtnEl.disabled = false;
+
+    submitBtnEl.disabled = false;
+    submitBtnEl.innerText = activeVerdict === 'PASSED' ? 'Submit Again' : 'Submit';
+    submitBtnEl.className = activeVerdict === 'PASSED'
+        ? 'bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg'
+        : 'bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
+
+    const solvedCount = Array.from(assignedQuestionBank.keys()).filter((qId) => isSolvedVerdict(questionVerdicts.get(qId))).length;
+    const completed = totalAssignedQuestions > 0 && solvedCount === totalAssignedQuestions;
+    updateFinishButtonState(completed);
+}
+
+function showFullscreenEntryGate(message) {
+    document.getElementById('fullscreenEntryMessage').innerText = message;
+    document.getElementById('fullscreenEntryModal').classList.remove('hidden');
+}
+
+function hideFullscreenEntryGate() {
+    document.getElementById('fullscreenEntryModal').classList.add('hidden');
+}
+
+function syncFullscreenRequirement() {
+    if (!isExamActive || currentMode !== 'exam' || isDisqualified) {
+        hideFullscreenEntryGate();
+        refreshExamActionState();
+        return;
+    }
+
+    if (!document.fullscreenElement) {
+        const waitingVisible = !document.getElementById('waitingRoomOverlay').classList.contains('hidden');
+        showFullscreenEntryGate(
+            waitingVisible
+                ? 'Please click to enter fullscreen before the lobby can continue.'
+                : 'Please click to enter fullscreen to continue the exam.'
+        );
+    } else {
+        hideFullscreenEntryGate();
+    }
+
+    refreshExamActionState();
+}
+
+function applyQuestionVerdict(qId, status, isRestore = false) {
+    if (!qId) return;
+
+    const normalizedStatus = normalizeVerdictStatus(status);
+    const previousStatus = normalizeVerdictStatus(questionVerdicts.get(qId) || '');
+
+    if (previousStatus === 'PASSED' && normalizedStatus !== 'PASSED' && !isRestore) {
+        renderQuestionCardState(qId);
+        refreshExamActionState();
+        checkExamCompletion();
+        return;
+    }
+
+    questionVerdicts.set(qId, normalizedStatus);
+    if (!isRestore) {
+        localStorage.setItem('vortex_question_verdicts', JSON.stringify(Object.fromEntries(questionVerdicts)));
+    }
+
+    renderQuestionCardState(qId);
+    refreshExamActionState();
     checkExamCompletion();
 }
 
 function checkExamCompletion() {
-    if (totalAssignedQuestions > 0 && questionVerdicts.size === totalAssignedQuestions) {
-        let allDone = true;
-        questionVerdicts.forEach(val => { if (val === 'EVALUATING') allDone = false; });
-        if (allDone) document.getElementById('examCompletedModal').classList.remove('hidden');
-    }
+    const solvedCount = Array.from(assignedQuestionBank.keys()).filter((qId) => isSolvedVerdict(questionVerdicts.get(qId))).length;
+    const completed = totalAssignedQuestions > 0 && solvedCount === totalAssignedQuestions;
+    updateFinishButtonState(completed);
 }
 
 window.safeExitRoom = () => {
-    document.getElementById('examCompletedModal').classList.add('hidden');
-    document.getElementById('timeUpModal').classList.add('hidden'); 
+    document.getElementById('timeUpModal').classList.add('hidden');
     document.getElementById('disqualifiedModal').classList.add('hidden');
     document.getElementById('kickedModal').classList.add('hidden');
-    document.getElementById('waitingRoomOverlay').classList.add('hidden'); 
-    
+    document.getElementById('waitingRoomOverlay').classList.add('hidden');
+    hideFullscreenEntryGate();
+
     clearExamSession();
     activeExamRoomId = null;
     activeExamQuestionId = null;
@@ -1066,7 +1499,8 @@ window.safeExitRoom = () => {
     if (waitingInterval) clearInterval(waitingInterval);
     stopCheatTimer();
     document.getElementById('examTimerDisplay').classList.add('hidden');
-    window.location.reload(); 
+    updateFinishButtonState(false);
+    window.location.reload();
 };
 
 /* -------------------------
@@ -1112,6 +1546,7 @@ function triggerTimeUp() {
     isExamActive = false;
     document.getElementById('examTimerDisplay').classList.add('hidden');
     document.getElementById('timeUpModal').classList.remove('hidden');
+    hideFullscreenEntryGate();
     
     stopCheatTimer();
     setEditorEditable(false);
@@ -1123,7 +1558,8 @@ function triggerTimeUp() {
 /* -------------------------
    setActiveQuestion
    ------------------------- */
-window.setActiveQuestion = (qId, roomId) => {
+window.setActiveQuestion = (qId, roomId, options = {}) => {
+    const shouldFocusExamTab = options.focusExamTab !== false;
     if (activeExamQuestionId && activeExamRoomId) persistCurrentCode();
 
     const resolvedRoomId = roomId || activeExamRoomId;
@@ -1132,31 +1568,38 @@ window.setActiveQuestion = (qId, roomId) => {
     activeExamQuestionId = qId;
     activeExamRoomId = resolvedRoomId;
 
-    document.querySelectorAll('#examQuestionsList > div').forEach(card => {
-        const cId = parseInt(card.id.replace('q-card-', ''));
-        const btn = document.getElementById(`lock-btn-${cId}`);
-        
-        if (cId === qId) {
-            btn.innerText = "Currently Solving...";
-            btn.className = "bg-blue-600 text-white border border-blue-700 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-md";
-        } else {
-            btn.innerText = "Open Editor";
-            btn.className = "bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs px-4 py-2 rounded-lg font-bold transition w-full text-center shadow-sm";
-        }
-    });
+    assignedQuestionBank.forEach((_, questionId) => renderQuestionCardState(questionId));
     
     if (question) {
         const viewer = document.getElementById('examQuestionViewer');
         viewer.innerHTML = `
             <div class="w-full text-left">
-                <div class="flex items-center justify-between gap-4 mb-4">
-                    <h2 class="text-2xl font-black text-blue-700 text-left">${escapeHtml(question.title)}</h2>
-                    <span class="bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-3 py-1 text-[11px] font-black uppercase tracking-widest">
-                        ${escapeHtml(question.total_marks || 0)} pts
-                    </span>
+                <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-[0.28em] text-slate-400">Question</p>
+                        <h2 class="mt-2 text-3xl font-black text-blue-700">${escapeHtml(question.title)}</h2>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-blue-700">
+                            ${isSolvedVerdict(questionVerdicts.get(qId)) ? 'Solved' : 'In Progress'}
+                        </span>
+                        <span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-blue-700">
+                            ${escapeHtml(question.total_marks || 0)} pts
+                        </span>
+                        <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-600">
+                            ${escapeHtml(question.testcase_count || 1)} Testcases
+                        </span>
+                    </div>
                 </div>
-                <div class="whitespace-pre-wrap font-mono text-sm bg-white p-5 rounded-lg border border-gray-200 text-left block w-full leading-relaxed">
-                    ${escapeHtml(question.description)}
+                <div class="mt-6 grid gap-5">
+                    <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 text-left">
+                        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Problem Statement</p>
+                        <div class="mt-3 whitespace-pre-wrap text-left text-sm leading-7 text-slate-700">${escapeHtml(question.description)}</div>
+                    </section>
+                    <section class="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
+                        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Judge Notes</p>
+                        <p class="mt-3 text-sm leading-6 text-slate-600">Only the statement is visible during the exam. Use <span class="font-bold text-slate-900">Run Test</span> for your own local checks, then <span class="font-bold text-slate-900">Submit</span> to evaluate against the judge.</p>
+                    </section>
                 </div>
             </div>
         `;
@@ -1173,32 +1616,79 @@ window.setActiveQuestion = (qId, roomId) => {
         }
     }
 
-    setEditorEditable(true);
-    document.getElementById('runBtn').disabled = false;
-    submitBtnEl.disabled = false;
-    submitBtnEl.innerText = "Submit";
-    submitBtnEl.className = "bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition flex items-center shadow-lg";
-
-    document.getElementById('tab-console').click();
+    refreshExamActionState();
+    if (shouldFocusExamTab) {
+        tabExam.click();
+    }
 };
 
 /* -------------------------
    Anti-cheat & Fullscreen check
    ------------------------- */
+function shouldEnforceExamFocusRestriction() {
+    return isExamActive && currentMode === 'exam' && !isDisqualified;
+}
+
+function handleExamFocusLoss() {
+    if (!shouldEnforceExamFocusRestriction()) return;
+    startCheatTimer();
+}
+
+function handleExamFocusReturn() {
+    if (!shouldEnforceExamFocusRestriction()) return;
+    if (!document.hidden && document.hasFocus()) {
+        stopCheatTimer();
+        syncFullscreenRequirement();
+    }
+}
+
 document.addEventListener("visibilitychange", () => {
-    if (isExamActive && !isDisqualified) {
-        if (document.hidden) startCheatTimer(); else stopCheatTimer();
+    if (!shouldEnforceExamFocusRestriction()) return;
+
+    if (document.hidden) {
+        handleExamFocusLoss();
+    } else {
+        handleExamFocusReturn();
     }
 });
 
-document.addEventListener('fullscreenchange', () => {
-    if (!document.fullscreenElement && isExamActive && !isDisqualified) {
-        // 🟢 FIXED: Silent visual warning instead of native alert
-        const warning = document.getElementById('fullscreenWarning');
-        warning.classList.remove('-translate-y-24');
-        setTimeout(() => warning.classList.add('-translate-y-24'), 4000);
-    }
+window.addEventListener('blur', () => {
+    if (document.hidden) return;
+    handleExamFocusLoss();
 });
+
+window.addEventListener('focus', () => {
+    handleExamFocusReturn();
+});
+
+window.addEventListener('pagehide', () => {
+    handleExamFocusLoss();
+});
+
+window.addEventListener('pageshow', () => {
+    handleExamFocusReturn();
+});
+
+document.addEventListener('fullscreenchange', () => {
+    const warning = document.getElementById('fullscreenWarning');
+    if (!document.fullscreenElement && isExamActive && !isDisqualified) {
+        warning.classList.remove('-translate-y-32');
+        setTimeout(() => warning.classList.add('-translate-y-32'), 4000);
+    } else {
+        warning.classList.add('-translate-y-32');
+    }
+    syncFullscreenRequirement();
+});
+
+document.getElementById('fullscreenEntryBtn').onclick = async () => {
+    try {
+        await document.documentElement.requestFullscreen();
+        hideFullscreenEntryGate();
+        refreshExamActionState();
+    } catch (err) {
+        console.warn("Fullscreen request failed", err);
+    }
+};
 
 function startCheatTimer() {
     if (cheatTimer) return;
@@ -1231,6 +1721,7 @@ async function disqualifyStudent() {
     }
     document.getElementById('antiCheatModal').classList.add('hidden');
     document.getElementById('disqualifiedModal').classList.remove('hidden');
+    hideFullscreenEntryGate();
     setEditorEditable(false);
     document.getElementById('runBtn').disabled = true;
     clearExamSession();
@@ -1262,39 +1753,21 @@ function switchToExam() {
 }
 
 /* -------------------------
-   🟢 NEW: WAITING ROOM ENGINE
+   NEW: WAITING ROOM ENGINE
    ------------------------- */
 function showWaitingRoom(title, teacher, startTimeMs, deadlineStr) {
     const overlay = document.getElementById('waitingRoomOverlay');
-    const timerEl = document.getElementById('waitingRoomTimer');
-    const reEnterBtn = document.getElementById('reEnterFullscreenBtn');
+    const hoursEl = document.getElementById('waitingRoomHours');
+    const minutesEl = document.getElementById('waitingRoomMinutes');
+    const secondsEl = document.getElementById('waitingRoomSeconds');
     const timerContainer = document.getElementById('waitingRoomTimerContainer');
 
     document.getElementById('waitingRoomTitle').innerText = title || "Exam Room";
     document.getElementById('waitingRoomTeacher').innerText = teacher || "Instructor";
     overlay.classList.remove('hidden');
-
-    // 🟢 FIX: Handle the Refresh/Fullscreen issue
-    if (!document.fullscreenElement) {
-        reEnterBtn.classList.remove('hidden');
-        if (timerContainer) {
-            timerContainer.classList.add('opacity-20', 'pointer-events-none');
-        }
-    } else {
-        reEnterBtn.classList.add('hidden');
-        if (timerContainer) {
-            timerContainer.classList.remove('opacity-20', 'pointer-events-none');
-        }
+    if (timerContainer) {
+        timerContainer.classList.remove('opacity-20', 'pointer-events-none');
     }
-
-    reEnterBtn.onclick = () => {
-        document.documentElement.requestFullscreen().then(() => {
-            reEnterBtn.classList.add('hidden');
-            if (timerContainer) {
-                timerContainer.classList.remove('opacity-20', 'pointer-events-none');
-            }
-        }).catch(err => console.warn("Fullscreen request failed", err));
-    };
 
     if (waitingInterval) clearInterval(waitingInterval);
 
@@ -1306,19 +1779,25 @@ function showWaitingRoom(title, teacher, startTimeMs, deadlineStr) {
             clearInterval(waitingInterval);
             overlay.classList.add('hidden'); 
             if (deadlineStr) startExamDeadlineCountdown(deadlineStr);
+            syncFullscreenRequirement();
+            refreshExamActionState();
         } else {
             const hours = Math.floor(distance / (1000 * 60 * 60));
             const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
             const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-            timerEl.innerText = `${hours.toString().padStart(2,'0')}:${minutes.toString().padStart(2,'0')}:${seconds.toString().padStart(2,'0')}`;
+            if (hoursEl) hoursEl.innerText = hours.toString().padStart(2, '0');
+            if (minutesEl) minutesEl.innerText = minutes.toString().padStart(2, '0');
+            if (secondsEl) secondsEl.innerText = seconds.toString().padStart(2, '0');
         }
     };
 
     updateWaitingTimer();
     waitingInterval = setInterval(updateWaitingTimer, 1000);
+    refreshExamActionState();
+    syncFullscreenRequirement();
 }
 
-// 🟢 BOOTSTRAP APP
+// BOOTSTRAP APP
 updateSubmitVisibility();
 resumeActiveExam();
 

@@ -6,7 +6,7 @@
     <title>Judge Vortex | Teacher Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        // 🛡️ THE BOUNCER: Security & Role Routing
+        // THE BOUNCER: Security & Role Routing
         if (!localStorage.getItem('vortex_token')) {
             window.location.href = "/login/";
         } else if (localStorage.getItem('vortex_is_teacher') !== 'true') {
@@ -32,7 +32,7 @@
         <div class="w-1/3 max-w-sm bg-white/86 backdrop-blur-xl border border-white/70 flex flex-col rounded-[30px] shadow-[0_28px_80px_-44px_rgba(15,23,42,0.35)] overflow-hidden">
             <div class="p-5 border-b border-slate-100 bg-white/70 flex justify-between items-center">
                 <h2 class="font-bold text-gray-700 uppercase tracking-widest text-xs">My Exam Rooms</h2>
-                <button onclick="document.getElementById('createRoomModal').classList.remove('hidden')" class="bg-gradient-to-r from-blue-600 to-violet-600 hover:brightness-110 text-white text-[10px] px-3 py-1.5 rounded-xl font-black shadow-sm transition uppercase">
+                <button onclick="openCreateRoomModal()" class="bg-gradient-to-r from-blue-600 to-violet-600 hover:brightness-110 text-white text-[10px] px-3 py-1.5 rounded-xl font-black shadow-sm transition uppercase">
                     + New Room
                 </button>
             </div>
@@ -53,9 +53,13 @@
                                 <p class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Joined Students</p>
                                 <p id="studentCount" class="text-2xl font-black text-blue-600">0</p>
                             </div>
-                            <div class="text-center">
+                            <div class="text-center border-r border-slate-200 pr-6">
                                 <p class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Questions in Pool</p>
                                 <p id="questionPoolCount" class="text-2xl font-black text-gray-700">0</p>
+                            </div>
+                            <div class="text-center">
+                                <p class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Questions per Student</p>
+                                <p id="assignedQuestionCount" class="text-2xl font-black text-violet-600">0</p>
                             </div>
                         </div>
 
@@ -68,9 +72,17 @@
                             </span>
                         </div>
                     </div>
-                    <button onclick="document.getElementById('addQuestionModal').classList.remove('hidden')" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition">
-                        + Add Question to Pool
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <button id="refreshRoomBtn" class="bg-white text-slate-400 px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition border border-slate-200 cursor-not-allowed" disabled>
+                            Refresh
+                        </button>
+                        <button id="editScheduleBtn" class="bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition border border-slate-200">
+                            Edit Room
+                        </button>
+                        <button onclick="openQuestionModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-md transition">
+                            + Add Question to Pool
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -136,41 +148,52 @@
         </div>
     </div>
 
-    <div id="createRoomModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md border border-gray-100">
-            <h2 class="text-2xl font-black mb-6 text-gray-800 tracking-tight">Create Exam Room</h2>
+    <div id="createRoomModal" class="fixed inset-0 hidden z-50 bg-[linear-gradient(180deg,_rgba(241,245,249,0.74),_rgba(226,238,255,0.82))] backdrop-blur-xl">
+        <div class="flex min-h-full items-center justify-center p-6">
+        <div class="bg-white p-8 rounded-[28px] shadow-[0_32px_90px_-46px_rgba(37,99,235,0.24)] w-full max-w-xl border border-white/90">
+            <h2 class="text-2xl font-black mb-2 text-gray-800 tracking-tight">Create Exam Room</h2>
+            <p class="text-sm text-slate-500 mb-6">Schedule the room in your local browser time. You can edit the timing later from the dashboard.</p>
             <form id="createRoomForm">
                 <div class="mb-4">
                     <label class="block text-sm font-bold text-gray-700 mb-1">Room Title</label>
-                    <input type="text" id="createRoomTitle" class="w-full border p-3 rounded-lg" required>
+                    <input type="text" id="createRoomTitle" class="w-full rounded-xl border border-gray-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" required>
                 </div>
 
                 <div class="mb-4">
                     <label class="block text-sm font-bold text-gray-700 mb-1">Questions to Assign</label>
-                    <input type="number" id="createRoomQuestions" class="w-full border p-3 rounded-lg" min="1" value="3" required>
+                    <input type="number" id="createRoomQuestions" class="w-full rounded-xl border border-gray-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" min="1" value="3" required>
                 </div>
 
-                <div class="mb-4">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Exam Start Time</label>
-                    <input type="datetime-local" id="createRoomStartTime" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500" required>
-                </div>
-
-                <div class="mb-4">
-                    <label class="block text-sm font-bold text-gray-700 mb-1">Exam End Time (Deadline)</label>
-                    <input type="datetime-local" id="createRoomEndTime" class="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500" required>
+                <div class="mb-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Exam Start Time</label>
+                        <input type="datetime-local" id="createRoomStartTime" step="60" class="w-full rounded-xl border border-gray-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" required>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-1">Exam End Time (Deadline)</label>
+                        <input type="datetime-local" id="createRoomEndTime" step="60" class="w-full rounded-xl border border-gray-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" required>
+                    </div>
                 </div>
                 <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="document.getElementById('createRoomModal').classList.add('hidden')" class="px-4 py-2 text-gray-600 font-bold">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white font-bold rounded-lg">Create Room</button>
+                    <button type="button" onclick="document.getElementById('createRoomModal').classList.add('hidden')" class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100">Cancel</button>
+                    <button type="submit" class="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-700">Create Room</button>
                 </div>
             </form>
         </div>
+        </div>
     </div>
 
-    <div id="addQuestionModal" class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center hidden z-50 backdrop-blur-sm">
-        <div class="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-2xl border border-gray-100">
-            <h2 class="text-2xl font-black mb-6 text-gray-800 tracking-tight">Add Question</h2>
-            <form id="addQuestionForm" class="space-y-4">
+    <div id="addQuestionModal" class="fixed inset-0 hidden z-50 overflow-y-auto bg-[linear-gradient(180deg,_rgba(241,245,249,0.74),_rgba(226,238,255,0.82))] p-6 backdrop-blur-xl">
+        <div class="flex min-h-full items-start justify-center py-2 md:items-center">
+        <div class="bg-white p-8 rounded-[28px] shadow-[0_32px_90px_-46px_rgba(37,99,235,0.24)] w-full max-w-4xl border border-white/90 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-4 mb-6 shrink-0">
+                <div>
+                    <h2 id="questionModalTitle" class="text-2xl font-black text-gray-800 tracking-tight">Add Question</h2>
+                    <p id="questionModalHelper" class="text-sm text-slate-500 mt-2">Add one testcase card per judge case. You can add, remove, and edit them individually.</p>
+                </div>
+                <button type="button" onclick="closeQuestionModal()" class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-50">Close</button>
+            </div>
+            <form id="addQuestionForm" class="space-y-4 overflow-y-auto pr-2">
                 <div class="flex space-x-4">
                     <div class="flex-[3]">
                         <label class="block text-xs font-black text-gray-500 uppercase mb-1">Title</label>
@@ -185,27 +208,59 @@
                     <label class="block text-xs font-black text-gray-500 uppercase mb-1">Description</label>
                     <textarea id="qDesc" rows="4" class="w-full p-3 border border-gray-300 rounded-xl font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500" required></textarea>
                 </div>
-                <div class="flex space-x-4">
-                    <div class="flex-1">
-                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">Stdin</label>
-                        <textarea id="qInput" rows="3" class="w-full p-3 border border-gray-300 rounded-xl font-mono text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Judge Testcases</p>
+                            <p class="text-sm text-slate-500 mt-1">Each testcase stores one input and one expected output.</p>
+                        </div>
+                        <button id="addTestcaseBtn" type="button" class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-blue-700">+ Add Testcase</button>
                     </div>
-                    <div class="flex-1">
-                        <label class="block text-xs font-black text-gray-500 uppercase mb-1">Expected Output</label>
-                        <textarea id="qOutput" rows="3" class="w-full p-3 border border-gray-300 rounded-xl font-mono text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-blue-500" required></textarea>
-                    </div>
+                    <div id="questionTestcaseList" class="mt-4 space-y-4"></div>
                 </div>
                 <div class="flex justify-end space-x-3 mt-8">
-                    <button type="button" onclick="document.getElementById('addQuestionModal').classList.add('hidden')" class="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-xl">Cancel</button>
-                    <button type="submit" class="px-6 py-2 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 shadow-lg">Save Question</button>
+                    <button type="button" onclick="closeQuestionModal()" class="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-xl">Cancel</button>
+                    <button id="questionSubmitBtn" type="submit" class="px-6 py-2 bg-green-600 text-white font-black rounded-xl hover:bg-green-700 shadow-lg">Save Question</button>
                 </div>
             </form>
+        </div>
+        </div>
+    </div>
+
+    <div id="editScheduleModal" class="fixed inset-0 hidden z-50 bg-[linear-gradient(180deg,_rgba(241,245,249,0.74),_rgba(226,238,255,0.82))] backdrop-blur-xl">
+        <div class="flex min-h-full items-center justify-center p-6">
+        <div class="bg-white p-8 rounded-[28px] shadow-[0_32px_90px_-46px_rgba(37,99,235,0.24)] w-full max-w-md border border-white/90">
+            <h2 class="text-2xl font-black mb-2 text-gray-800 tracking-tight">Edit Room Settings</h2>
+            <p class="text-sm text-gray-500 mb-6">Update the schedule and how many questions each student should receive.</p>
+            <form id="editScheduleForm">
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Questions to Assign</label>
+                    <input type="number" id="editRoomQuestionsToAssign" class="w-full rounded-xl border border-gray-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" min="1" required>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Exam Start Time</label>
+                    <input type="datetime-local" id="editRoomStartTime" step="60" class="w-full rounded-xl border border-gray-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" required>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm font-bold text-gray-700 mb-1">Exam End Time (Deadline)</label>
+                    <input type="datetime-local" id="editRoomEndTime" step="60" class="w-full rounded-xl border border-gray-300 bg-slate-50 px-4 py-3 text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100" required>
+                </div>
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="document.getElementById('editScheduleModal').classList.add('hidden')" class="rounded-xl border border-slate-200 bg-slate-50 px-5 py-3 text-sm font-bold text-slate-600 transition hover:bg-slate-100">Cancel</button>
+                    <button type="submit" class="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-700">Save Schedule</button>
+                </div>
+            </form>
+        </div>
         </div>
     </div>
 
     <script>
         const token = localStorage.getItem('vortex_token');
         let currentRoomId = null;
+        let currentRoomData = null;
+        let editingQuestionId = null;
+        let roomRefreshInFlight = false;
+        const roomQuestionBank = new Map();
 
         document.getElementById('logoutBtn').onclick = () => { localStorage.clear(); window.location.href = '/login/'; };
 
@@ -218,30 +273,309 @@
                 .replace(/'/g, "&#039;");
         }
 
+        function getApiErrorMessage(payload, fallbackMessage) {
+            if (!payload || typeof payload !== 'object') return fallbackMessage;
+            if (typeof payload.error === 'string' && payload.error.trim()) return payload.error;
+
+            for (const value of Object.values(payload)) {
+                if (Array.isArray(value) && value.length && typeof value[0] === 'string') {
+                    return value[0];
+                }
+                if (typeof value === 'string' && value.trim()) {
+                    return value;
+                }
+            }
+
+            return fallbackMessage;
+        }
+
+        function toDateTimeLocalValue(dateStr) {
+            if (!dateStr) return '';
+            const date = new Date(dateStr);
+            if (Number.isNaN(date.getTime())) return '';
+            const localDate = new Date(date.getTime() - (date.getTimezoneOffset() * 60000));
+            return localDate.toISOString().slice(0, 16);
+        }
+
+        function getRoundedFutureTime(minutesAhead) {
+            const date = new Date();
+            date.setSeconds(0, 0);
+            date.setMinutes(date.getMinutes() + minutesAhead);
+            return date;
+        }
+
+        function applyCreateRoomDefaults(force = false) {
+            const startInput = document.getElementById('createRoomStartTime');
+            const endInput = document.getElementById('createRoomEndTime');
+            const now = new Date();
+            now.setSeconds(0, 0);
+
+            startInput.min = toDateTimeLocalValue(now.toISOString());
+            endInput.min = toDateTimeLocalValue(now.toISOString());
+
+            if (force || !startInput.value) {
+                startInput.value = toDateTimeLocalValue(getRoundedFutureTime(5).toISOString());
+            }
+
+            if (force || !endInput.value) {
+                endInput.value = toDateTimeLocalValue(getRoundedFutureTime(65).toISOString());
+            }
+        }
+
+        function syncCreateRoomDeadlineBounds() {
+            const startInput = document.getElementById('createRoomStartTime');
+            const endInput = document.getElementById('createRoomEndTime');
+            const startValue = startInput.value;
+
+            if (!startValue) return;
+
+            endInput.min = startValue;
+            if (!endInput.value || endInput.value <= startValue) {
+                const endDate = new Date(startValue);
+                endDate.setMinutes(endDate.getMinutes() + 60);
+                endInput.value = toDateTimeLocalValue(endDate.toISOString());
+            }
+        }
+
+        function openCreateRoomModal() {
+            applyCreateRoomDefaults();
+            syncCreateRoomDeadlineBounds();
+            document.getElementById('createRoomModal').classList.remove('hidden');
+        }
+
+        function normalizeQuestionTestcases(testcases) {
+            if (!Array.isArray(testcases) || testcases.length === 0) {
+                return [{ input: '', expected_output: '' }];
+            }
+
+            return testcases.map((testcase) => ({
+                input: testcase?.input || '',
+                expected_output: testcase?.expected_output || '',
+            }));
+        }
+
+        function renderQuestionTestcases(testcases = null) {
+            const testcaseList = document.getElementById('questionTestcaseList');
+            const normalized = normalizeQuestionTestcases(testcases);
+            testcaseList.innerHTML = normalized.map((testcase, index) => `
+                <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Testcase ${index + 1}</p>
+                            <p class="text-xs text-slate-500 mt-1">Input stays private from students. Only the judge uses it.</p>
+                        </div>
+                        <button type="button" data-remove-testcase="${index}" class="rounded-xl border border-rose-200 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-50 ${normalized.length === 1 ? 'opacity-40 cursor-not-allowed' : ''}" ${normalized.length === 1 ? 'disabled' : ''}>
+                            Remove
+                        </button>
+                    </div>
+                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="block text-xs font-black uppercase tracking-[0.18em] text-slate-500 mb-2">Input</label>
+                            <textarea data-field="input" rows="4" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500">${escapeHtml(testcase.input)}</textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black uppercase tracking-[0.18em] text-slate-500 mb-2">Expected Output</label>
+                            <textarea data-field="output" rows="4" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 font-mono text-sm outline-none focus:ring-2 focus:ring-blue-500">${escapeHtml(testcase.expected_output)}</textarea>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function collectQuestionTestcases() {
+            return Array.from(document.querySelectorAll('#questionTestcaseList > div')).map((card) => ({
+                input: card.querySelector('[data-field="input"]').value,
+                expected_output: card.querySelector('[data-field="output"]').value.trim(),
+            }));
+        }
+
+        function serializeQuestionTestcases(testcases) {
+            return {
+                testcase_input: testcases.map((testcase) => testcase.input || '').join('\n\n'),
+                expected_output: testcases.map((testcase) => testcase.expected_output || '').join('\n\n'),
+            };
+        }
+
+        function resetQuestionModal() {
+            editingQuestionId = null;
+            document.getElementById('addQuestionForm').reset();
+            document.getElementById('questionModalTitle').innerText = 'Add Question';
+            document.getElementById('questionModalHelper').innerText = 'Add one testcase card per judge case. You can add, remove, and edit them individually.';
+            document.getElementById('questionSubmitBtn').innerText = 'Save Question';
+            renderQuestionTestcases([{ input: '', expected_output: '' }]);
+        }
+
+        function closeQuestionModal() {
+            document.getElementById('addQuestionModal').classList.add('hidden');
+            resetQuestionModal();
+        }
+
+        document.getElementById('createRoomStartTime').addEventListener('change', syncCreateRoomDeadlineBounds);
+        document.getElementById('createRoomModal').addEventListener('click', (event) => {
+            if (event.target.id === 'createRoomModal') {
+                document.getElementById('createRoomModal').classList.add('hidden');
+            }
+        });
+
+        function openQuestionModal(questionId = null) {
+            if (!currentRoomId) {
+                alert('Select a room before editing questions.');
+                return;
+            }
+
+            resetQuestionModal();
+            if (questionId) {
+                const question = roomQuestionBank.get(questionId);
+                if (!question) {
+                    alert('Question details are not available yet. Refresh the room and try again.');
+                    return;
+                }
+
+                editingQuestionId = questionId;
+                document.getElementById('questionModalTitle').innerText = 'Edit Question';
+                document.getElementById('questionModalHelper').innerText = 'Update the statement, marks, and testcase cards for this question.';
+                document.getElementById('questionSubmitBtn').innerText = 'Save Changes';
+                document.getElementById('qTitle').value = question.title || '';
+                document.getElementById('qMarks').value = question.total_marks || 10;
+                document.getElementById('qDesc').value = question.description || '';
+                renderQuestionTestcases(question.testcases);
+            }
+
+            document.getElementById('addQuestionModal').classList.remove('hidden');
+        }
+
+        document.getElementById('addTestcaseBtn').onclick = () => {
+            const testcases = collectQuestionTestcases();
+            testcases.push({ input: '', expected_output: '' });
+            renderQuestionTestcases(testcases);
+        };
+
+        document.getElementById('questionTestcaseList').addEventListener('click', (event) => {
+            const removeBtn = event.target.closest('[data-remove-testcase]');
+            if (!removeBtn) return;
+
+            const index = Number(removeBtn.getAttribute('data-remove-testcase'));
+            const testcases = collectQuestionTestcases();
+            if (testcases.length <= 1) return;
+            testcases.splice(index, 1);
+            renderQuestionTestcases(testcases);
+        });
+
+        function renderRoomDetails(room) {
+            currentRoomData = room;
+            currentRoomId = room.id;
+            document.getElementById('emptyStatePanel').classList.add('hidden');
+            document.getElementById('roomDetailsPanel').classList.remove('hidden');
+            document.getElementById('roomTitleDisplay').innerText = room.title;
+            document.getElementById('roomCodeDisplay').innerText = room.room_code;
+            document.getElementById('assignedQuestionCount').innerText = room.questions_to_assign || 0;
+
+            const startStr = room.start_time ? new Date(room.start_time).toLocaleString() : 'Immediate';
+            document.getElementById('roomStartDisplay').innerText = startStr;
+            document.getElementById('roomDeadlineDisplay').innerText = new Date(room.join_deadline).toLocaleString();
+            updateRefreshButtonState(false);
+        }
+
+        function updateRefreshButtonState(isRefreshing = false) {
+            const refreshBtn = document.getElementById('refreshRoomBtn');
+            if (!refreshBtn) return;
+
+            if (!currentRoomId) {
+                refreshBtn.disabled = true;
+                refreshBtn.innerText = 'Refresh';
+                refreshBtn.className = 'bg-white text-slate-400 px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition border border-slate-200 cursor-not-allowed';
+                return;
+            }
+
+            refreshBtn.disabled = isRefreshing;
+            refreshBtn.innerText = isRefreshing ? 'Refreshing...' : 'Refresh';
+            refreshBtn.className = isRefreshing
+                ? 'bg-blue-50 text-blue-700 px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition border border-blue-100 cursor-wait'
+                : 'bg-white hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition border border-slate-200';
+        }
+
+        async function refreshRoomData(roomId = currentRoomId, options = {}) {
+            const targetRoomId = Number(roomId || 0) || null;
+            if (!targetRoomId || roomRefreshInFlight) return;
+
+            roomRefreshInFlight = true;
+            updateRefreshButtonState(true);
+
+            try {
+                const refreshTasks = [
+                    fetchQuestions(targetRoomId),
+                    fetchParticipants(targetRoomId),
+                    fetchSubmissions(targetRoomId),
+                ];
+
+                if (options.refreshRooms === true) {
+                    refreshTasks.push(fetchRooms({ preserveSelection: true }));
+                }
+
+                await Promise.all(refreshTasks);
+            } finally {
+                roomRefreshInFlight = false;
+                updateRefreshButtonState(false);
+            }
+        }
+
         // --- ROOM MANAGEMENT ---
-        async function fetchRooms() {
+        async function fetchRooms(options = {}) {
+            const preserveSelection = options.preserveSelection === true;
             try {
                 const res = await fetch('/api/rooms/', { headers: { 'Authorization': `Token ${token}` } });
-                if (!res.ok) return;
+                if (!res.ok) return [];
                 const rooms = await res.json();
                 const roomList = document.getElementById('roomList');
                 roomList.innerHTML = '';
 
+                if (!rooms || rooms.length === 0) {
+                    roomList.innerHTML = '<div class="p-8 text-center text-sm text-gray-400 italic">No rooms...</div>';
+
+                    if (preserveSelection) {
+                        currentRoomId = null;
+                        currentRoomData = null;
+                        document.getElementById('roomDetailsPanel').classList.add('hidden');
+                        document.getElementById('emptyStatePanel').classList.remove('hidden');
+                        updateRefreshButtonState(false);
+                    }
+                    return [];
+                }
+
                 rooms.forEach(room => {
+                    const isActive = Number(currentRoomId || 0) === Number(room.id);
                     const div = document.createElement('div');
-                    div.className = "p-4 hover:bg-blue-50 cursor-pointer transition border-l-4 border-transparent hover:border-blue-600 group flex justify-between items-center";
+                    div.className = `p-4 cursor-pointer transition border-l-4 group flex justify-between items-center ${isActive ? 'bg-blue-50 border-blue-600' : 'border-transparent hover:bg-blue-50 hover:border-blue-600'}`;
                     div.onclick = () => selectRoom(room);
                     div.innerHTML = `
                         <div class="flex-1">
-                            <div class="font-black text-gray-800 group-hover:text-blue-700 transition text-left">${escapeHtml(room.title)}</div>
-                            <div class="text-[10px] text-gray-500 font-mono mt-1 text-left">CODE: ${escapeHtml(room.room_code)} | ${escapeHtml(room.total_questions || 0)} Questions</div>
+                            <div class="font-black ${isActive ? 'text-blue-700' : 'text-gray-800 group-hover:text-blue-700'} transition text-left">${escapeHtml(room.title)}</div>
+                            <div class="text-[10px] text-gray-500 font-mono mt-1 text-left">CODE: ${escapeHtml(room.room_code)} | ${escapeHtml(room.total_questions || 0)} Questions | Assign ${escapeHtml(room.questions_to_assign || 0)}</div>
                         </div>
                         <button onclick="event.stopPropagation(); deleteRoom(${room.id})" class="text-gray-300 hover:text-red-500 transition ml-2 opacity-0 group-hover:opacity-100" title="Delete Room">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                         </button>`;
                     roomList.appendChild(div);
                 });
-            } catch (err) { console.error(err); }
+
+                if (preserveSelection && currentRoomId) {
+                    const selectedRoom = rooms.find((room) => Number(room.id) === Number(currentRoomId));
+                    if (selectedRoom) {
+                        renderRoomDetails(selectedRoom);
+                    } else {
+                        currentRoomId = null;
+                        currentRoomData = null;
+                        document.getElementById('roomDetailsPanel').classList.add('hidden');
+                        document.getElementById('emptyStatePanel').classList.remove('hidden');
+                        updateRefreshButtonState(false);
+                    }
+                }
+
+                return rooms;
+            } catch (err) {
+                console.error(err);
+                return [];
+            }
         }
 
         async function deleteRoom(roomId) {
@@ -254,8 +588,10 @@
                 if (res.ok) {
                     if (currentRoomId === roomId) {
                         currentRoomId = null;
+                        currentRoomData = null;
                         document.getElementById('roomDetailsPanel').classList.add('hidden');
                         document.getElementById('emptyStatePanel').classList.remove('hidden');
+                        updateRefreshButtonState(false);
                     }
                     fetchRooms();
                 } else {
@@ -265,21 +601,30 @@
         }
 
         async function selectRoom(room) {
-            currentRoomId = room.id;
-            document.getElementById('emptyStatePanel').classList.add('hidden');
-            document.getElementById('roomDetailsPanel').classList.remove('hidden');
-            document.getElementById('roomTitleDisplay').innerText = room.title;
-            document.getElementById('roomCodeDisplay').innerText = room.room_code;
-            
-            // 🟢 DISPLAY UPDATES: Format and show both Start Time and Deadline
-            const startStr = room.start_time ? new Date(room.start_time).toLocaleString() : 'Immediate';
-            document.getElementById('roomStartDisplay').innerText = startStr;
-            document.getElementById('roomDeadlineDisplay').innerText = new Date(room.join_deadline).toLocaleString();
-            
-            fetchQuestions(room.id);
-            fetchParticipants(room.id);
-            fetchSubmissions(room.id); 
+            renderRoomDetails(room);
+            await Promise.all([
+                fetchQuestions(room.id),
+                fetchParticipants(room.id),
+                fetchSubmissions(room.id),
+            ]);
+            fetchRooms({ preserveSelection: true });
         }
+
+        document.getElementById('refreshRoomBtn').onclick = () => {
+            refreshRoomData(currentRoomId, { refreshRooms: true });
+        };
+
+        document.getElementById('editScheduleBtn').onclick = () => {
+            if (!currentRoomData) {
+                alert("Select a room first.");
+                return;
+            }
+
+            document.getElementById('editRoomStartTime').value = toDateTimeLocalValue(currentRoomData.start_time);
+            document.getElementById('editRoomEndTime').value = toDateTimeLocalValue(currentRoomData.join_deadline);
+            document.getElementById('editRoomQuestionsToAssign').value = currentRoomData.questions_to_assign || 1;
+            document.getElementById('editScheduleModal').classList.remove('hidden');
+        };
 
         document.getElementById('createRoomForm').onsubmit = async (e) => {
             e.preventDefault();
@@ -287,9 +632,15 @@
             const endValue = document.getElementById('createRoomEndTime').value;
             const startTime = new Date(startValue);
             const endTime = new Date(endValue);
+            const questionsToAssign = Number.parseInt(document.getElementById('createRoomQuestions').value, 10);
 
             if (!startValue || !endValue || Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
                 alert("Please choose valid exam start and end times.");
+                return;
+            }
+
+            if (Number.isNaN(questionsToAssign) || questionsToAssign < 1) {
+                alert("Questions to assign must be at least 1.");
                 return;
             }
 
@@ -303,7 +654,7 @@
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
                 body: JSON.stringify({
                     title: document.getElementById('createRoomTitle').value,
-                    questions_to_assign: document.getElementById('createRoomQuestions').value,
+                    questions_to_assign: questionsToAssign,
                     start_time: startTime.toISOString(),
                     join_deadline: endTime.toISOString()
                 })
@@ -318,14 +669,65 @@
             }
         };
 
+        document.getElementById('editScheduleForm').onsubmit = async (e) => {
+            e.preventDefault();
+            if (!currentRoomId || !currentRoomData) {
+                alert("Select a room first.");
+                return;
+            }
+
+            const startValue = document.getElementById('editRoomStartTime').value;
+            const endValue = document.getElementById('editRoomEndTime').value;
+            const startTime = new Date(startValue);
+            const endTime = new Date(endValue);
+            const questionsToAssign = Number.parseInt(document.getElementById('editRoomQuestionsToAssign').value, 10);
+
+            if (!startValue || !endValue || Number.isNaN(startTime.getTime()) || Number.isNaN(endTime.getTime())) {
+                alert("Please choose valid exam start and end times.");
+                return;
+            }
+
+            if (Number.isNaN(questionsToAssign) || questionsToAssign < 1) {
+                alert("Questions to assign must be at least 1.");
+                return;
+            }
+
+            if (endTime <= startTime) {
+                alert("Exam end time must be later than the exam start time.");
+                return;
+            }
+
+            const res = await fetch(`/api/rooms/${currentRoomId}/`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+                body: JSON.stringify({
+                    questions_to_assign: questionsToAssign,
+                    start_time: startTime.toISOString(),
+                    join_deadline: endTime.toISOString()
+                })
+            });
+
+            if (res.ok) {
+                renderRoomDetails(await res.json());
+                document.getElementById('editScheduleModal').classList.add('hidden');
+                refreshRoomData(currentRoomId, { refreshRooms: true });
+            } else {
+                const data = await res.json().catch(() => ({}));
+                alert(getApiErrorMessage(data, "Failed to update exam schedule."));
+            }
+        };
+
         // --- QUESTION POOL MANAGEMENT ---
         async function fetchQuestions(roomId) {
+            const targetRoomId = Number(roomId || 0) || null;
             try {
-                const res = await fetch(`/api/rooms/${roomId}/questions/`, { headers: { 'Authorization': `Token ${token}` } });
+                const res = await fetch(`/api/rooms/${targetRoomId}/questions/`, { headers: { 'Authorization': `Token ${token}` } });
                 if (!res.ok) return;
                 const questions = await res.json();
+                if (Number(currentRoomId || 0) !== targetRoomId) return;
                 const qList = document.getElementById('questionList');
                 qList.innerHTML = '';
+                roomQuestionBank.clear();
                 document.getElementById('questionPoolCount').innerText = questions.length || 0;
                 
                 if (!questions || questions.length === 0) {
@@ -333,10 +735,14 @@
                     return;
                 }
                 questions.forEach(q => {
+                    roomQuestionBank.set(q.id, q);
                     qList.innerHTML += `
                     <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm relative hover:shadow-md transition text-left">
                         <div class="absolute top-4 right-4 flex items-center space-x-2">
                             <span class="bg-blue-50 text-blue-700 text-[10px] font-black px-2 py-1 rounded border border-blue-200">${escapeHtml(q.total_marks || 0)} PTS</span>
+                            <button onclick="event.stopPropagation(); openQuestionModal(${q.id})" class="text-gray-300 hover:text-blue-600 transition" title="Edit Question">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L12 15l-4 1 1-4 9.586-9.586z"></path></svg>
+                            </button>
                             <button onclick="event.stopPropagation(); removeQuestion(${q.id})" class="text-gray-300 hover:text-red-500 transition" title="Remove Question">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
                             </button>
@@ -344,8 +750,8 @@
                         <h4 class="font-black text-gray-800 uppercase text-xs tracking-tight text-left">${escapeHtml(q.title)}</h4>
                         <p class="text-xs text-gray-500 mt-2 line-clamp-2 text-left">${escapeHtml(q.description)}</p>
                         <div class="mt-4 pt-4 border-t border-gray-50 flex flex-col space-y-1 text-left">
-                            <span class="text-[9px] font-black text-gray-400 uppercase">Expected Output</span>
-                            <code class="text-[10px] text-blue-600 font-mono bg-blue-50 p-1 rounded block truncate">${escapeHtml(q.expected_output)}</code>
+                            <span class="text-[9px] font-black text-gray-400 uppercase">Testcases</span>
+                            <div class="inline-flex items-center self-start rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">${escapeHtml(q.testcase_count || 1)} Cases</div>
                         </div>
                     </div>`;
                 });
@@ -354,39 +760,66 @@
 
         document.getElementById('addQuestionForm').onsubmit = async (e) => {
             e.preventDefault();
-            const res = await fetch(`/api/rooms/${currentRoomId}/questions/`, {
-                method: 'POST',
+            if (!currentRoomId) {
+                alert("Select a room before adding a question.");
+                return;
+            }
+
+            const title = document.getElementById('qTitle').value.trim();
+            const description = document.getElementById('qDesc').value.trim();
+            const marks = Number.parseInt(document.getElementById('qMarks').value, 10);
+            const testcases = collectQuestionTestcases().filter((testcase) => testcase.input.trim() || testcase.expected_output.trim());
+
+            if (!title || !description || Number.isNaN(marks) || marks < 1) {
+                alert("Fill the title, description, testcase data, and a valid marks value.");
+                return;
+            }
+
+            if (testcases.length === 0 || testcases.some((testcase) => !testcase.expected_output.trim())) {
+                alert("Each testcase needs an expected output.");
+                return;
+            }
+
+            const payload = {
+                title,
+                description,
+                total_marks: marks,
+                ...serializeQuestionTestcases(testcases),
+            };
+
+            const url = editingQuestionId
+                ? `/api/rooms/${currentRoomId}/questions/${editingQuestionId}/`
+                : `/api/rooms/${currentRoomId}/questions/`;
+            const method = editingQuestionId ? 'PATCH' : 'POST';
+
+            const res = await fetch(url, {
+                method,
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
-                body: JSON.stringify({ 
-                    title: document.getElementById('qTitle').value, 
-                    description: document.getElementById('qDesc').value, 
-                    testcase_input: document.getElementById('qInput').value, 
-                    expected_output: document.getElementById('qOutput').value, 
-                    total_marks: parseInt(document.getElementById('qMarks').value) 
-                })
+                body: JSON.stringify(payload)
             });
             if (res.ok) { 
-                document.getElementById('addQuestionModal').classList.add('hidden'); 
-                fetchQuestions(currentRoomId); 
-                fetchRooms(); 
-                e.target.reset(); 
+                closeQuestionModal();
+                refreshRoomData(currentRoomId, { refreshRooms: true });
             } else {
-                alert("Submission failed. Ensure all fields are filled correctly.");
+                const data = await res.json().catch(() => ({}));
+                alert(getApiErrorMessage(data, "Failed to save question."));
             }
         };
 
         async function removeQuestion(qId) {
             if (!confirm("Remove this question?")) return;
             const res = await fetch(`/api/rooms/${currentRoomId}/questions/${qId}/`, { method: 'DELETE', headers: { 'Authorization': `Token ${token}` } });
-            if (res.ok) { fetchQuestions(currentRoomId); fetchRooms(); }
+            if (res.ok) { refreshRoomData(currentRoomId, { refreshRooms: true }); }
         }
 
         // --- PARTICIPANT MANAGEMENT (WITH KICK FEATURE) ---
         async function fetchParticipants(roomId) {
+            const targetRoomId = Number(roomId || 0) || null;
             try {
-                const res = await fetch(`/api/rooms/${roomId}/participants/`, { headers: { 'Authorization': `Token ${token}` } });
+                const res = await fetch(`/api/rooms/${targetRoomId}/participants/`, { headers: { 'Authorization': `Token ${token}` } });
                 if (!res.ok) return;
                 const students = await res.json();
+                if (Number(currentRoomId || 0) !== targetRoomId) return;
                 
                 document.getElementById('studentCount').innerText = students.length;
                 
@@ -431,8 +864,7 @@
                 });
                 
                 if (res.ok) {
-                    fetchParticipants(currentRoomId);
-                    fetchSubmissions(currentRoomId);
+                    refreshRoomData(currentRoomId);
                 } else {
                     alert("Failed to kick student. Check your backend endpoints.");
                 }
@@ -443,13 +875,15 @@
 
         // --- AGGREGATED SUBMISSION LEADERBOARD ---
         async function fetchSubmissions(roomId) {
+            const targetRoomId = Number(roomId || 0) || null;
             try {
-                const res = await fetch(`/api/rooms/${roomId}/submissions/`, {
+                const res = await fetch(`/api/rooms/${targetRoomId}/submissions/`, {
                     headers: { 'Authorization': `Token ${token}` }
                 });
                 if (!res.ok) return;
 
                 const submissions = await res.json();
+                if (Number(currentRoomId || 0) !== targetRoomId) return;
                 const tbody = document.getElementById('submissionTableBody');
                 tbody.innerHTML = '';
 
@@ -462,12 +896,15 @@
 
                 submissions.forEach(sub => {
                     const name = sub.student_name || sub.username || (sub.user && sub.user.username) || 'Unknown Student';
+                    const studentKey = String(sub.student_id || name);
+                    const questionId = Number(sub.question_id || sub.question || 0) || null;
                     
-                    if (!studentStats[name]) {
-                        studentStats[name] = {
+                    if (!studentStats[studentKey]) {
+                        studentStats[studentKey] = {
+                            studentKey,
                             name: name,
-                            questionsSolved: 0,
-                            totalScore: 0,
+                            solvedQuestions: new Set(),
+                            questionScores: new Map(),
                             latestTime: 0,
                             latestStatus: 'PENDING'
                         };
@@ -475,19 +912,25 @@
 
                     const statusRaw = (sub.status || 'PENDING').toString().toUpperCase();
                     
-                    if (statusRaw === 'PASSED' || statusRaw === 'ACCEPTED') {
-                        studentStats[name].questionsSolved += 1;
-                        studentStats[name].totalScore += (sub.total_score || sub.score || sub.marks || 0);
+                    if ((statusRaw === 'PASSED' || statusRaw === 'ACCEPTED') && questionId) {
+                        studentStats[studentKey].solvedQuestions.add(questionId);
+                        const earnedScore = Number(sub.total_score || sub.score || sub.marks || 0) || 0;
+                        const previousScore = studentStats[studentKey].questionScores.get(questionId) || 0;
+                        studentStats[studentKey].questionScores.set(questionId, Math.max(previousScore, earnedScore));
                     }
 
                     const subTime = new Date(sub.submitted_at || sub.created_at || 0).getTime();
-                    if (subTime > studentStats[name].latestTime) {
-                        studentStats[name].latestTime = subTime;
-                        studentStats[name].latestStatus = statusRaw;
+                    if (subTime > studentStats[studentKey].latestTime) {
+                        studentStats[studentKey].latestTime = subTime;
+                        studentStats[studentKey].latestStatus = statusRaw;
                     }
                 });
 
-                const leaderboard = Object.values(studentStats).sort((a, b) => {
+                const leaderboard = Object.values(studentStats).map((student) => ({
+                    ...student,
+                    questionsSolved: student.solvedQuestions.size,
+                    totalScore: Array.from(student.questionScores.values()).reduce((sum, score) => sum + score, 0),
+                })).sort((a, b) => {
                     if (b.questionsSolved !== a.questionsSolved) return b.questionsSolved - a.questionsSolved;
                     return b.totalScore - a.totalScore;
                 });
@@ -515,14 +958,8 @@
             } catch (err) { console.error("Submission fetch error:", err); }
         }
 
-        // --- INITIALIZATION & POLLING ---
+        // --- INITIALIZATION ---
         fetchRooms();
-        setInterval(() => { 
-            if (currentRoomId) {
-                fetchSubmissions(currentRoomId); 
-                fetchParticipants(currentRoomId);
-            }
-        }, 5000);
     </script>
 </body>
 </html>

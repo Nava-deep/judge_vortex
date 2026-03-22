@@ -1,19 +1,23 @@
-# core/throttles.py
+import logging
+import os
 from rest_framework.throttling import UserRateThrottle
 from kafka import KafkaConsumer, TopicPartition
-import logging
+from kafka.admin import KafkaAdminClient
+from execution_routing import get_topic_consumer_groups
 
 logger = logging.getLogger(__name__)
+KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092").split(",") if server.strip()]
 
 class KafkaManager:
     """Singleton to keep Kafka connection alive across requests"""
     _consumer = None
+    _admin = None
 
     @classmethod
     def get_consumer(cls):
         if cls._consumer is None:
             cls._consumer = KafkaConsumer(
-                bootstrap_servers=['localhost:9092'],
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
                 api_version=(0, 10, 1),
                 # Reduced timeout so the web request doesn't hang if Kafka is slow
                 request_timeout_ms=1000, 
@@ -21,9 +25,18 @@ class KafkaManager:
             )
         return cls._consumer
 
+    @classmethod
+    def get_admin(cls):
+        if cls._admin is None:
+            cls._admin = KafkaAdminClient(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                client_id="judge_vortex_throttle",
+            )
+        return cls._admin
+
 class DynamicQueueThrottle(UserRateThrottle):
     def allow_request(self, request, view):
-        # 🟢 FIX: Only throttle POST requests (Submissions).
+        # FIX: Only throttle POST requests (Submissions).
         # This ensures GET requests (fetching results) are NEVER blocked.
         if request.method != 'POST':
             return True
@@ -33,17 +46,28 @@ class DynamicQueueThrottle(UserRateThrottle):
 
         try:
             consumer = KafkaManager.get_consumer()
-            tp = TopicPartition('code_submissions', 0)
-            
-            # 1. Get the 'High Watermark' (Total messages in Kafka)
-            end_offsets = consumer.end_offsets([tp])
-            high_watermark = end_offsets.get(tp, 0)
+            admin = KafkaManager.get_admin()
 
-            # 2. Get the current position of the 'judge_vortex_executor' group
-            # We use position(tp) to see where the consumer is currently standing.
-            current_position = consumer.position(tp)
+            queue_depth = 0
+            for topic_name, consumer_group in get_topic_consumer_groups():
+                partitions = consumer.partitions_for_topic(topic_name) or set()
+                if not partitions:
+                    continue
 
-            queue_depth = high_watermark - current_position
+                topic_partitions = [TopicPartition(topic_name, partition) for partition in sorted(partitions)]
+                end_offsets = consumer.end_offsets(topic_partitions)
+                committed_offsets = admin.list_consumer_group_offsets(
+                    consumer_group,
+                    partitions=topic_partitions,
+                )
+
+                for tp in topic_partitions:
+                    high_watermark = end_offsets.get(tp, 0) or 0
+                    committed_meta = committed_offsets.get(tp)
+                    committed = getattr(committed_meta, "offset", None)
+                    if committed is None or committed < 0:
+                        committed = 0
+                    queue_depth += max(high_watermark - committed, 0)
 
             # 🚀 PRODUCTION LOGIC:
             # If the queue is empty (depth <= 0), allow the request immediately.

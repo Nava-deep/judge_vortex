@@ -4,7 +4,7 @@ echo "--------------------------------------------------------"
 echo "SHUTTING DOWN JUDGE VORTEX..."
 echo "--------------------------------------------------------"
 
-# 1. KILL PROCESSES GRACEFULLY
+# 1. KILL HOST PROCESSES GRACEFULLY
 echo "Stopping Python Services..."
 pkill -15 -f "executor_service/main.py" 2>/dev/null
 pkill -15 -f "manage.py runserver" 2>/dev/null

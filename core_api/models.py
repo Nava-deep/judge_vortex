@@ -1,7 +1,9 @@
-from django.db import models
+from django.db import models, IntegrityError, transaction
 from django.contrib.auth.models import User
 import string
 import random
+
+MAX_ROOM_CODE_GENERATION_ATTEMPTS = 12
 
 def generate_room_code():
     """Generates a random 6-character uppercase alphanumeric code (e.g., A7X9P2)"""
@@ -33,6 +35,25 @@ class ExamRoom(models.Model):
     def __str__(self):
         return f"{self.title} [Code: {self.room_code}]"
 
+    def save(self, *args, **kwargs):
+        if self.pk:
+            return super().save(*args, **kwargs)
+
+        last_error = None
+        for _ in range(MAX_ROOM_CODE_GENERATION_ATTEMPTS):
+            if not self.room_code:
+                self.room_code = generate_room_code()
+            try:
+                with transaction.atomic():
+                    return super().save(*args, **kwargs)
+            except IntegrityError as exc:
+                if 'room_code' not in str(exc).lower():
+                    raise
+                last_error = exc
+                self.room_code = generate_room_code()
+
+        raise last_error or IntegrityError("Unable to generate a unique room code.")
+
 class ExamQuestion(models.Model):
     room = models.ForeignKey(ExamRoom, on_delete=models.CASCADE, related_name='questions')
     title = models.CharField(max_length=100)
@@ -53,6 +74,8 @@ class RoomParticipant(models.Model):
     
     # The randomly assigned subset of questions for this specific student
     assigned_questions = models.ManyToManyField(ExamQuestion)
+    access_locked = models.BooleanField(default=False)
+    access_locked_at = models.DateTimeField(null=True, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -84,6 +107,8 @@ class Submission(models.Model):
     room = models.ForeignKey(ExamRoom, on_delete=models.CASCADE, related_name='submissions', null=True, blank=True)
     question = models.ForeignKey(ExamQuestion, on_delete=models.CASCADE, related_name='submissions', null=True, blank=True)
     awarded_marks = models.IntegerField(default=0)
+    passed_testcases = models.IntegerField(default=0)
+    total_testcases = models.IntegerField(default=0)
     output = models.TextField(null=True, blank=True)
     code = models.TextField()
     language = models.CharField(max_length=50)

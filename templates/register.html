@@ -16,12 +16,40 @@
     <title>Judge Vortex | Sign Up</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="min-h-screen bg-[#0b1220] text-gray-900 flex items-center justify-center font-sans overflow-hidden relative px-6 py-10">
-    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.24),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(147,51,234,0.20),_transparent_30%),linear-gradient(135deg,_#0b1220,_#111827_55%,_#0f172a)]"></div>
-    <div class="absolute top-[-8rem] left-[-4rem] h-72 w-72 rounded-full bg-blue-500/20 blur-3xl"></div>
-    <div class="absolute bottom-[-6rem] right-[-2rem] h-72 w-72 rounded-full bg-violet-500/20 blur-3xl"></div>
+<body class="min-h-screen bg-[#eef5ff] text-gray-900 flex items-center justify-center font-sans overflow-hidden relative px-6 py-10">
+    <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.14),_transparent_24%),linear-gradient(180deg,_#fbfdff,_#eef5ff_52%,_#f6faff)]"></div>
+    <div class="absolute inset-0 bg-[linear-gradient(rgba(37,99,235,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(37,99,235,0.05)_1px,transparent_1px)] bg-[size:44px_44px] opacity-50"></div>
+    <div class="absolute top-[-7rem] left-[-4rem] h-72 w-72 rounded-full bg-blue-400/18 blur-3xl"></div>
+    <div class="absolute bottom-[-6rem] right-[-2rem] h-72 w-72 rounded-full bg-cyan-400/14 blur-3xl"></div>
 
-    <div class="relative z-10 bg-white/92 backdrop-blur-xl p-8 rounded-[30px] shadow-[0_30px_120px_-40px_rgba(37,99,235,0.55)] w-full max-w-md border border-white/60">
+    <div class="relative z-10 w-full max-w-5xl rounded-[36px] border border-white/70 bg-white/72 p-3 shadow-[0_40px_120px_-56px_rgba(37,99,235,0.35)] backdrop-blur-2xl">
+    <div class="grid gap-0 overflow-hidden rounded-[30px] bg-white/88 lg:grid-cols-[1.12fr_0.88fr]">
+        <section class="relative hidden overflow-hidden bg-[linear-gradient(180deg,_rgba(255,255,255,0.72),_rgba(239,246,255,0.92))] px-10 py-12 lg:flex lg:flex-col lg:justify-between">
+            <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.12),_transparent_26%)]"></div>
+            <div class="relative">
+                <div class="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white/90 px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.24em] text-violet-700 shadow-sm">
+                    Student And Teacher Access
+                </div>
+                <h2 class="mt-8 max-w-md text-5xl font-black tracking-tight text-slate-900">Build rooms, join exams, and judge code in one place.</h2>
+                <p class="mt-5 max-w-xl text-base leading-8 text-slate-600">Create a professional account experience for both instructors and students, then move directly into room management or the coding workspace.</p>
+            </div>
+            <div class="grid gap-4 sm:grid-cols-3">
+                <div class="rounded-2xl border border-white/80 bg-white/78 p-4 shadow-sm">
+                    <p class="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Teacher</p>
+                    <p class="mt-2 text-lg font-black text-slate-900">Create and manage rooms</p>
+                </div>
+                <div class="rounded-2xl border border-white/80 bg-white/78 p-4 shadow-sm">
+                    <p class="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Student</p>
+                    <p class="mt-2 text-lg font-black text-slate-900">Join focused exam sessions</p>
+                </div>
+                <div class="rounded-2xl border border-white/80 bg-white/78 p-4 shadow-sm">
+                    <p class="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Judge</p>
+                    <p class="mt-2 text-lg font-black text-slate-900">Get clean verdict feedback</p>
+                </div>
+            </div>
+        </section>
+
+        <div class="relative bg-white/90 p-8 sm:p-10">
         <div class="text-center mb-8">
             <div class="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-4 py-1.5 text-[11px] font-black uppercase tracking-[0.24em] text-violet-700 shadow-sm">
                 New Account
@@ -57,6 +85,8 @@
         <p class="mt-6 text-center text-sm text-gray-500">
             Already have an account? <a href="/login/" class="text-blue-600 hover:text-blue-500 font-bold transition">Log in here</a>
         </p>
+    </div>
+    </div>
     </div>
 
     <script>

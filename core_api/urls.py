@@ -9,6 +9,7 @@ from .views import (
     RoomParticipantListView,
     RoomQuestionDeleteView,
     RoomSubmissionsListView,
+    StudentRoomStateView,
     SubmissionUpdateView,
     SubmissionCreateView,
     SubmissionDetailView,
@@ -32,6 +33,7 @@ urlpatterns = [
     path('rooms/<int:room_id>/questions/<int:q_id>/', RoomQuestionDeleteView.as_view(), name='delete-question'),
     path('rooms/<int:pk>/', RoomDetailView.as_view(), name='room-detail'),
     path('rooms/<int:room_id>/participants/<int:student_id>/', RoomParticipantDeleteView.as_view(), name='kick-student'),
+    path('rooms/<int:room_id>/state/', StudentRoomStateView.as_view(), name='student-room-state'),
 
     # 🎓 Student: Exam & Execution
     path('rooms/join/', join_room_view, name='join-room'),
