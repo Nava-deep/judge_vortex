@@ -1707,6 +1707,14 @@ function stopCheatTimer() {
 
 async function disqualifyStudent() {
     isDisqualified = true;
+    if (activeExamRoomId) {
+        try {
+            await fetch(`/api/rooms/${activeExamRoomId}/lock/`, {
+                method: 'POST',
+                headers: { 'Authorization': `Token ${token}` }
+            });
+        } catch (e) { }
+    }
     if (activeExamRoomId && activeExamQuestionId) {
         const code = editorView.state.doc.toString();
         const lang = document.getElementById('language').value;

@@ -59,6 +59,16 @@ def get_participant_solved_question_ids(participant):
     ).values_list('question_id', flat=True).distinct()
     return list(solved_ids)
 
+
+def lock_participant_access(participant):
+    if participant.access_locked:
+        return False
+
+    participant.access_locked = True
+    participant.access_locked_at = timezone.now()
+    participant.save(update_fields=['access_locked', 'access_locked_at'])
+    return True
+
 # ==========================================
 # 1. AUTHENTICATION ENDPOINTS
 # ==========================================
@@ -243,10 +253,7 @@ class RoomParticipantDeleteView(APIView):
         
         # 2. Find the participation record and permanently lock further access
         participant = get_object_or_404(RoomParticipant, room=room, student_id=student_id)
-        if not participant.access_locked:
-            participant.access_locked = True
-            participant.access_locked_at = timezone.now()
-            participant.save(update_fields=['access_locked', 'access_locked_at'])
+        lock_participant_access(participant)
 
         # 🟢 3. Broadcast an INSTANT KICK event via WebSockets to the student
         try:
@@ -265,6 +272,19 @@ class RoomParticipantDeleteView(APIView):
             logger.error(f"WebSocket Kick Broadcast Failed: {ws_error}")
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class StudentRoomLockView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id):
+        participant = get_object_or_404(
+            RoomParticipant.objects.select_related('room'),
+            room_id=room_id,
+            student=request.user,
+        )
+        lock_participant_access(participant)
+        return Response({'message': 'Exam room access locked.'}, status=status.HTTP_200_OK)
 
 
 class StudentRoomStateView(APIView):
@@ -431,10 +451,8 @@ class SubmissionCreateView(generics.CreateAPIView):
                 passed_testcases=0,
                 total_testcases=len(judge_cases) if judge_cases else 0
             )
-            if participant and is_auto_disqualification and not participant.access_locked:
-                participant.access_locked = True
-                participant.access_locked_at = timezone.now()
-                participant.save(update_fields=['access_locked', 'access_locked_at'])
+            if participant and is_auto_disqualification:
+                lock_participant_access(participant)
         
         # 📨 Push to Kafka for Native Execution
         producer = get_kafka_producer()
