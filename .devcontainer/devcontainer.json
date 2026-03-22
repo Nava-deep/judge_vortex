@@ -1,0 +1,46 @@
+{
+  "name": "Judge Vortex",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/python/current/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "forwardPorts": [
+    53562,
+    80,
+    3000,
+    9090
+  ],
+  "portsAttributes": {
+    "53562": {
+      "label": "Judge Vortex App",
+      "onAutoForward": "openBrowser"
+    },
+    "80": {
+      "label": "Nginx"
+    },
+    "3000": {
+      "label": "Grafana"
+    },
+    "9090": {
+      "label": "Prometheus"
+    }
+  },
+  "postCreateCommand": "pip3 install --user -r requirements.txt",
+  "remoteUser": "vscode"
+}
