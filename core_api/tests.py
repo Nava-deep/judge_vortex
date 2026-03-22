@@ -248,6 +248,32 @@ class StudentJoinRoomTests(APITestCase):
         self.assertEqual(state_response.status_code, 403)
         self.assertEqual(state_response.data['error'], 'Your access to this exam room has been locked.')
 
+    def test_teacher_kick_locks_participant_and_blocks_rejoin(self):
+        join_response = self.client.post(
+            '/api/rooms/join/',
+            {'room_code': self.room.room_code},
+            format='json',
+        )
+        self.assertEqual(join_response.status_code, 201)
+
+        teacher_token = Token.objects.create(user=self.teacher)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {teacher_token.key}')
+        kick_response = self.client.delete(f'/api/rooms/{self.room.id}/participants/{self.student.id}/')
+        self.assertEqual(kick_response.status_code, 204)
+
+        participant = RoomParticipant.objects.get(room=self.room, student=self.student)
+        self.assertTrue(participant.access_locked)
+        self.assertIsNotNone(participant.access_locked_at)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        rejoin_response = self.client.post(
+            '/api/rooms/join/',
+            {'room_code': self.room.room_code},
+            format='json',
+        )
+        self.assertEqual(rejoin_response.status_code, 403)
+        self.assertEqual(rejoin_response.data['error'], 'Your access to this exam room has been locked.')
+
 
 @override_settings(
     CACHES={

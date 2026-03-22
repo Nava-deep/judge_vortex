@@ -164,7 +164,7 @@ class RoomParticipantListView(APIView):
     def get(self, request, room_id):
         room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
         # select_related makes it highly efficient to grab the connected User model
-        participants = RoomParticipant.objects.filter(room=room).select_related('student')
+        participants = RoomParticipant.objects.filter(room=room, access_locked=False).select_related('student')
         
         data = []
         for p in participants:
@@ -241,14 +241,14 @@ class RoomParticipantDeleteView(APIView):
         # 1. Verify the teacher owns this room
         room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
         
-        # 2. Find the participation record and delete it
+        # 2. Find the participation record and permanently lock further access
         participant = get_object_or_404(RoomParticipant, room=room, student_id=student_id)
-        participant.delete()
-        
-        # 3. Delete their submissions for this room
-        Submission.objects.filter(room=room, user_id=student_id).delete()
+        if not participant.access_locked:
+            participant.access_locked = True
+            participant.access_locked_at = timezone.now()
+            participant.save(update_fields=['access_locked', 'access_locked_at'])
 
-        # 🟢 4. Broadcast an INSTANT KICK event via WebSockets to the student
+        # 🟢 3. Broadcast an INSTANT KICK event via WebSockets to the student
         try:
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
