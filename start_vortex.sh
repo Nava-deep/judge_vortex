@@ -87,4 +87,4 @@ echo "Grafana:    http://localhost:3000"
 echo "Prometheus: http://localhost:9090"
 echo "--------------------------------------------------------"
 
-python3 manage.py runserver 53562
+python3 manage.py runserver 0.0.0.0:53562
