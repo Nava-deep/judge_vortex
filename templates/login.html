@@ -15,6 +15,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Judge Vortex | Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        button:not(:disabled),
+        input[type="button"]:not(:disabled),
+        input[type="submit"]:not(:disabled),
+        input[type="reset"]:not(:disabled) {
+            cursor: pointer;
+        }
+
+        button:disabled,
+        input:disabled {
+            cursor: not-allowed;
+        }
+    </style>
 </head>
 <body class="min-h-screen bg-[#eef5ff] text-gray-900 flex items-center justify-center font-sans overflow-hidden relative px-6 py-10">
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.18),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.14),_transparent_24%),linear-gradient(180deg,_#fbfdff,_#eef5ff_52%,_#f6faff)]"></div>

@@ -5,6 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <title>Judge Vortex | Teacher Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        button:not(:disabled),
+        input[type="button"]:not(:disabled),
+        input[type="submit"]:not(:disabled),
+        input[type="reset"]:not(:disabled) {
+            cursor: pointer;
+        }
+
+        button:disabled,
+        input:disabled {
+            cursor: not-allowed;
+        }
+    </style>
     <script>
         // THE BOUNCER: Security & Role Routing
         if (!localStorage.getItem('vortex_token')) {

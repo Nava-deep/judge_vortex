@@ -46,6 +46,18 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
+        button:not(:disabled),
+        input[type="button"]:not(:disabled),
+        input[type="submit"]:not(:disabled),
+        input[type="reset"]:not(:disabled) {
+            cursor: pointer;
+        }
+
+        button:disabled,
+        input:disabled {
+            cursor: not-allowed;
+        }
+
         /* Gutters */
         .gutter-h { cursor: col-resize; width: 6px; background: transparent; transition: background .2s; z-index: 50; }
         .gutter-h:hover, .gutter-h.active { background: #3b82f6; }
