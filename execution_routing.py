@@ -31,33 +31,6 @@ EXECUTOR_FAMILY_CONFIG = {
         "build_target": "executor-java",
         "languages": ("java",),
     },
-    "swift": {
-        "topic_env": "KAFKA_SUBMISSIONS_TOPIC_SWIFT",
-        "topic_default": "code_submissions_swift",
-        "group_env": "KAFKA_EXECUTOR_GROUP_SWIFT",
-        "group_default": "judge_vortex_executor_swift",
-        "service_name": "executor-swift",
-        "build_target": "executor-swift",
-        "languages": ("swift",),
-    },
-    "haskell": {
-        "topic_env": "KAFKA_SUBMISSIONS_TOPIC_HASKELL",
-        "topic_default": "code_submissions_haskell",
-        "group_env": "KAFKA_EXECUTOR_GROUP_HASKELL",
-        "group_default": "judge_vortex_executor_haskell",
-        "service_name": "executor-haskell",
-        "build_target": "executor-haskell",
-        "languages": ("haskell",),
-    },
-    "csharp": {
-        "topic_env": "KAFKA_SUBMISSIONS_TOPIC_CSHARP",
-        "topic_default": "code_submissions_csharp",
-        "group_env": "KAFKA_EXECUTOR_GROUP_CSHARP",
-        "group_default": "judge_vortex_executor_csharp",
-        "service_name": "executor-csharp",
-        "build_target": "executor-csharp",
-        "languages": ("csharp",),
-    },
 }
 
 

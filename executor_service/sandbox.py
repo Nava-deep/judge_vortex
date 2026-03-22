@@ -18,8 +18,6 @@ LANG_CONFIG = {
     "c": {"filename": "main.c", "compile_cmd": ["gcc", "-O3", "main.c", "-o", "out"], "run_cmd": ["./out"]},
     "go": {"filename": "main.go", "compile_cmd": ["go", "build", "-o", "out", "main.go"], "run_cmd": ["./out"]},
     "rust": {"filename": "main.rs", "compile_cmd": ["rustc", "-O", "main.rs", "-o", "out"], "run_cmd": ["./out"]},
-    "swift": {"filename": "main.swift", "compile_cmd": ["env", "swiftc", "-O", "main.swift", "-o", "out"], "run_cmd": ["./out"]},
-    "haskell": {"filename": "main.hs", "compile_cmd": ["ghc", "-O2", "main.hs", "-o", "out"], "run_cmd": ["./out"]},
     "java": {
         "filename": "Main.java",
         "compile_cmd": [
@@ -48,7 +46,6 @@ LANG_CONFIG = {
         "compile_cmd": ["npx", "tsc", "main.ts", "--outFile", "solution.js", "--target", "es6"],
         "run_cmd": ["node", "solution.js"],
     },
-    "csharp": {"filename": "Program.cs", "compile_cmd": ["mcs", "Program.cs", "-out:out.exe"], "run_cmd": ["mono", "out.exe"]},
     "sql": {"filename": "query.sql", "compile_cmd": None, "run_cmd": ["sqlite3", ":memory:", "-batch", "-init", "setup.sql", ".read query.sql"]},
 }
 
@@ -88,11 +85,6 @@ LANGUAGE_ISOLATE_CONFIG = {
             "GOCACHE": "/box/.cache/go-build",
         }
     },
-    "haskell": {
-        "dirs": [
-            "/var/lib/ghc=/var/lib/ghc:maybe",
-        ]
-    },
     "java": {
         "dirs": [
             "/etc/java-17-openjdk=/etc/java-17-openjdk:maybe",
@@ -102,7 +94,7 @@ LANGUAGE_ISOLATE_CONFIG = {
         },
     },
 }
-NATIVE_FALLBACK_LANGUAGES = {"csharp"}
+NATIVE_FALLBACK_LANGUAGES = set()
 
 _BOX_ID_QUEUE = asyncio.Queue()
 for _box_id in range(ISOLATE_BOXES):

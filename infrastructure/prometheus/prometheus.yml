@@ -7,9 +7,6 @@ scrape_configs:
       - targets:
           - 'executor-core:8001'
           - 'executor-java:8002'
-          - 'executor-swift:8003'
-          - 'executor-haskell:8004'
-          - 'executor-csharp:8005'
 
   - job_name: 'vortex-api'
     static_configs:

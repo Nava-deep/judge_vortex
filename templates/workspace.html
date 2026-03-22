@@ -31,10 +31,7 @@
         "@codemirror/lang-php": "https://esm.sh/@codemirror/lang-php",
         "@codemirror/lang-go": "https://esm.sh/@codemirror/lang-go",
         "@codemirror/lang-sql": "https://esm.sh/@codemirror/lang-sql",
-        "@codemirror/legacy-modes/mode/ruby": "https://esm.sh/@codemirror/legacy-modes/mode/ruby",
-        "@codemirror/legacy-modes/mode/swift": "https://esm.sh/@codemirror/legacy-modes/mode/swift",
-        "@codemirror/legacy-modes/mode/haskell": "https://esm.sh/@codemirror/legacy-modes/mode/haskell",
-        "@codemirror/legacy-modes/mode/clike": "https://esm.sh/@codemirror/legacy-modes/mode/clike"
+        "@codemirror/legacy-modes/mode/ruby": "https://esm.sh/@codemirror/legacy-modes/mode/ruby"
       }
     }
     </script>
@@ -103,9 +100,6 @@
             <option value="go">Go 1.21</option>
             <option value="rust">Rust 1.75</option>
             <option value="php">PHP 8.2</option>
-            <option value="csharp">C# (.NET 8.0)</option>
-            <option value="swift">Swift (Latest)</option>
-            <option value="haskell">Haskell 9.4</option>
             <option value="sql">SQL (SQLite)</option>
         </select>
 
@@ -354,9 +348,6 @@ import { php } from "@codemirror/lang-php";
 import { go } from "@codemirror/lang-go";
 import { sql } from "@codemirror/lang-sql";
 import { ruby } from "@codemirror/legacy-modes/mode/ruby";
-import { swift } from "@codemirror/legacy-modes/mode/swift";
-import { haskell } from "@codemirror/legacy-modes/mode/haskell";
-import { csharp } from "@codemirror/legacy-modes/mode/clike";
 
 /* -------------------------
    Basic environment data & Tracking
@@ -403,9 +394,6 @@ const boilerplate = {
     'go': 'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("Hello from Judge Vortex!")\n}',
     'rust': 'fn main() {\n    println!("Hello from Judge Vortex!");\n}',
     'php': '<?php\n\necho "Hello from Judge Vortex!\\n";\n?>',
-    'csharp': 'using System;\n\nnamespace JudgeVortex {\n    class Program {\n        static void Main(string[] args) {\n            Console.WriteLine("Hello from Judge Vortex!");\n        }\n    }\n}',
-    'swift': 'print("Hello from Judge Vortex!")',
-    'haskell': 'main :: IO ()\nmain = putStrLn "Hello from Judge Vortex!"',
     'sql': '-- Write your query here\nSELECT "Hello from Judge Vortex!" AS Welcome;'
 };
 
@@ -422,9 +410,6 @@ const getLangExtension = (langStr) => {
         case 'go': return go();
         case 'sql': return sql();
         case 'ruby': return StreamLanguage.define(ruby);
-        case 'swift': return StreamLanguage.define(swift);
-        case 'haskell': return StreamLanguage.define(haskell);
-        case 'csharp': return StreamLanguage.define(csharp);
         default: return python();
     }
 };

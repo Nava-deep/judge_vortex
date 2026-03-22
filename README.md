@@ -40,8 +40,6 @@ This starts:
 - Nginx
 - core and Java executors
 
-Swift, Haskell, and C# executors are disabled by default in Codespaces to reduce startup time and quota usage.
-
 ### 4. Open the app
 
 - In the `Ports` tab, open forwarded port `53562`

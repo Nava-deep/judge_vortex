@@ -94,48 +94,6 @@ services:
       KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_JAVA:-code_submissions_java}
       KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_JAVA:-judge_vortex_executor_java}
 
-  executor-swift:
-    <<: *executor-common
-    build:
-      context: ..
-      dockerfile: executor_service/Dockerfile
-      target: executor-swift
-    environment:
-      <<: *executor-common-env
-      EXECUTOR_NAME: executor-swift
-      EXECUTOR_PROMETHEUS_PORT: 8003
-      EXECUTOR_SUPPORTED_LANGUAGES: swift
-      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_SWIFT:-code_submissions_swift}
-      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_SWIFT:-judge_vortex_executor_swift}
-
-  executor-haskell:
-    <<: *executor-common
-    build:
-      context: ..
-      dockerfile: executor_service/Dockerfile
-      target: executor-haskell
-    environment:
-      <<: *executor-common-env
-      EXECUTOR_NAME: executor-haskell
-      EXECUTOR_PROMETHEUS_PORT: 8004
-      EXECUTOR_SUPPORTED_LANGUAGES: haskell
-      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_HASKELL:-code_submissions_haskell}
-      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_HASKELL:-judge_vortex_executor_haskell}
-
-  executor-csharp:
-    <<: *executor-common
-    build:
-      context: ..
-      dockerfile: executor_service/Dockerfile
-      target: executor-csharp
-    environment:
-      <<: *executor-common-env
-      EXECUTOR_NAME: executor-csharp
-      EXECUTOR_PROMETHEUS_PORT: 8005
-      EXECUTOR_SUPPORTED_LANGUAGES: csharp
-      KAFKA_SUBMISSIONS_TOPIC: ${KAFKA_SUBMISSIONS_TOPIC_CSHARP:-code_submissions_csharp}
-      KAFKA_EXECUTOR_GROUP: ${KAFKA_EXECUTOR_GROUP_CSHARP:-judge_vortex_executor_csharp}
-
   redis:
     image: redis:6.2-alpine
     container_name: vortex-redis

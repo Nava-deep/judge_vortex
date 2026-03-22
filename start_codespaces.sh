@@ -17,16 +17,11 @@ export EXECUTOR_MAX_CONCURRENCY="${EXECUTOR_MAX_CONCURRENCY:-4}"
 echo "Codespaces profile:"
 echo "  core=${EXECUTOR_CORE_REPLICAS}"
 echo "  java=${EXECUTOR_JAVA_REPLICAS}"
-echo "  swift=${EXECUTOR_SWIFT_REPLICAS}"
-echo "  haskell=${EXECUTOR_HASKELL_REPLICAS}"
-echo "  csharp=${EXECUTOR_CSHARP_REPLICAS}"
 echo "  backend=${EXECUTOR_BACKEND}"
 echo "  max_concurrency=${EXECUTOR_MAX_CONCURRENCY}"
 echo
-echo "Heavy executors are disabled by default to save Codespaces quota."
 echo "Codespaces defaults to the faster native executor backend."
 echo "Override with EXECUTOR_BACKEND=isolate if you want to test isolate there."
-echo "Override with EXECUTOR_*_REPLICAS if you need more language families."
 echo
 
 ./start_vortex.sh
