@@ -24,4 +24,11 @@ echo "Codespaces defaults to the faster native executor backend."
 echo "Override with EXECUTOR_BACKEND=isolate if you want to test isolate there."
 echo
 
+echo "Checking Python dependencies..."
+if ! python3 -c "import django, channels, psycopg" >/dev/null 2>&1; then
+  echo "Syncing Python packages from requirements.txt..."
+  pip3 install --user -r requirements.txt
+  echo
+fi
+
 ./start_vortex.sh
