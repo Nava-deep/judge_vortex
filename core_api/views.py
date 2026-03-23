@@ -157,9 +157,17 @@ def normalize_submission_files(language, code, files_payload, entry_file=None):
         seen_paths.add(path)
 
     default_entry_file = get_default_entry_file(language)
-    resolved_entry_file = sanitize_relative_file_path(entry_file) or default_entry_file
+    requested_entry_file = sanitize_relative_file_path(entry_file)
 
-    if resolved_entry_file not in seen_paths:
+    if normalized_files:
+        if requested_entry_file and requested_entry_file in seen_paths:
+            resolved_entry_file = requested_entry_file
+        elif default_entry_file in seen_paths:
+            resolved_entry_file = default_entry_file
+        else:
+            resolved_entry_file = normalized_files[0]['path']
+    else:
+        resolved_entry_file = requested_entry_file or default_entry_file
         normalized_files.insert(0, {'path': resolved_entry_file, 'content': str(code or '')})
         seen_paths.add(resolved_entry_file)
 

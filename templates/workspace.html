@@ -129,13 +129,13 @@
 <div id="workspaceShell" class="relative z-10 flex-1 flex overflow-hidden w-full p-4 gap-4">
 
     <div id="leftPanel" class="flex flex-col min-w-[200px] rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)] bg-white/88 backdrop-blur-xl" style="width: 60%;">
-        <div id="editorTop" class="flex flex-1 bg-white overflow-hidden border-r border-slate-100">
-            <aside id="fileExplorer" class="hidden w-56 shrink-0 border-r border-slate-100 bg-slate-50/90 md:flex md:flex-col">
-                <div class="border-b border-slate-100 px-4 py-3">
+        <div id="editorTop" class="flex flex-1 overflow-hidden border-r border-slate-100 bg-white">
+            <aside id="fileExplorer" class="hidden w-64 shrink-0 border-r border-slate-100 bg-[linear-gradient(180deg,_rgba(248,250,252,0.96),_rgba(241,245,249,0.92))] md:flex md:flex-col">
+                <div class="border-b border-slate-100 px-4 py-4">
                     <div class="flex items-center justify-between">
                         <div>
                             <p class="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Files</p>
-                            <p class="mt-1 text-xs font-bold text-slate-600">Workspace</p>
+                            <p class="mt-1 text-xs font-bold text-slate-600">Project Workspace</p>
                         </div>
                         <button id="addFileBtn" type="button" class="rounded-xl border border-blue-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-50">
                             + File
@@ -155,17 +155,31 @@
                     <input id="localFileInput" type="file" multiple class="hidden" />
                     <input id="localFolderInput" type="file" webkitdirectory directory multiple class="hidden" />
                 </div>
+                <div class="border-b border-slate-100 px-4 py-3">
+                    <div id="workspaceMeta" class="flex items-center justify-between rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-[11px] font-bold text-slate-500 shadow-sm">
+                        <span>0 files</span>
+                        <span>Entry: main.py</span>
+                    </div>
+                </div>
                 <div id="fileList" class="flex-1 overflow-y-auto p-3"></div>
             </aside>
             <div class="relative flex-1 overflow-hidden bg-white">
-                <div class="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+                <div class="flex items-center justify-between border-b border-slate-100 bg-[linear-gradient(180deg,_rgba(248,250,252,0.9),_rgba(255,255,255,0.96))] px-4 py-3">
                     <div>
                         <p class="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Editor</p>
-                        <p id="activeFileLabel" class="mt-1 text-sm font-black text-slate-800">main.py</p>
+                        <div class="mt-1 flex items-center gap-2">
+                            <p id="activeFileLabel" class="text-sm font-black text-slate-800">main.py</p>
+                            <span id="entryFileBadge" class="hidden rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-700">Entry File</span>
+                        </div>
                     </div>
-                    <button id="deleteFileBtn" type="button" class="rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 shadow-sm transition hover:bg-rose-50">
-                        Delete File
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button id="setEntryFileBtn" type="button" class="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 shadow-sm transition hover:bg-emerald-50">
+                            Set Entry
+                        </button>
+                        <button id="deleteFileBtn" type="button" class="rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 shadow-sm transition hover:bg-rose-50">
+                            Delete File
+                        </button>
+                    </div>
                 </div>
                 <div id="editorContainer" class="absolute inset-x-0 bottom-0 top-[73px]"></div>
             </div>
@@ -412,6 +426,7 @@ let activeExamQuestionId = null;
 let workspaceFiles = [];
 let workspaceFolders = [];
 let activeFilePath = null;
+let workspaceEntryFilePath = null;
 const collapsedFolderPaths = new Set();
 
 // EXAM TRACKERS & ANTI-CHEAT VARIABLES
@@ -473,6 +488,20 @@ function getPrimaryFileForLanguage(language) {
     return languagePrimaryFiles[language] || 'main.txt';
 }
 
+function resolveWorkspaceEntryFile(language, files = [], preferredEntryFile = null) {
+    const preferredPath = sanitizeWorkspacePath(preferredEntryFile);
+    const defaultPath = getPrimaryFileForLanguage(language);
+    const normalizedFiles = Array.isArray(files) ? files : [];
+
+    if (preferredPath && normalizedFiles.some((file) => file.path === preferredPath)) {
+        return preferredPath;
+    }
+    if (normalizedFiles.some((file) => file.path === defaultPath)) {
+        return defaultPath;
+    }
+    return normalizedFiles[0]?.path || defaultPath;
+}
+
 function sanitizeWorkspacePath(pathValue) {
     const candidate = String(pathValue || '').replace(/\\/g, '/').trim().replace(/^\/+|\/+$/g, '');
     if (!candidate || candidate.startsWith('.') || candidate.startsWith('~') || candidate.includes('//')) return null;
@@ -512,7 +541,6 @@ function normalizeWorkspaceFolders(folders = null) {
 }
 
 function normalizeWorkspaceFiles(language, files = null, primaryContent = null) {
-    const primaryFilePath = getPrimaryFileForLanguage(language);
     const normalized = [];
     const seen = new Set();
     const incomingFiles = Array.isArray(files) ? files : [];
@@ -529,7 +557,8 @@ function normalizeWorkspaceFiles(language, files = null, primaryContent = null) 
         seen.add(path);
     });
 
-    if (!seen.has(primaryFilePath)) {
+    if (!normalized.length) {
+        const primaryFilePath = getPrimaryFileForLanguage(language);
         normalized.unshift({
             path: primaryFilePath,
             content: primaryContent !== null ? String(primaryContent) : (boilerplate[language] || ''),
@@ -561,19 +590,46 @@ function saveActiveFileContent() {
 function syncDeleteFileButton() {
     const deleteBtn = document.getElementById('deleteFileBtn');
     if (!deleteBtn) return;
-    const isPrimary = activeFilePath === getPrimaryFileForLanguage(document.getElementById('language').value);
-    deleteBtn.disabled = isPrimary;
-    deleteBtn.className = isPrimary
+    const isEntryFile = Boolean(activeFilePath && activeFilePath === workspaceEntryFilePath);
+    deleteBtn.disabled = isEntryFile;
+    deleteBtn.className = isEntryFile
         ? 'rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 shadow-sm cursor-not-allowed'
         : 'rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 shadow-sm transition hover:bg-rose-50';
 }
 
+function syncEntryControls() {
+    const activeFileLabelEl = document.getElementById('activeFileLabel');
+    const entryBadgeEl = document.getElementById('entryFileBadge');
+    const entryBtnEl = document.getElementById('setEntryFileBtn');
+    const workspaceMetaEl = document.getElementById('workspaceMeta');
+    const entryLabel = workspaceEntryFilePath || getPrimaryFileForLanguage(document.getElementById('language').value);
+
+    if (activeFileLabelEl) activeFileLabelEl.innerText = activeFilePath || entryLabel;
+    if (entryBadgeEl) {
+        if (activeFilePath && activeFilePath === workspaceEntryFilePath) entryBadgeEl.classList.remove('hidden');
+        else entryBadgeEl.classList.add('hidden');
+    }
+
+    if (entryBtnEl) {
+        const disabled = !activeFilePath || activeFilePath === workspaceEntryFilePath;
+        entryBtnEl.disabled = disabled;
+        entryBtnEl.className = disabled
+            ? 'rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 shadow-sm cursor-not-allowed'
+            : 'rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 shadow-sm transition hover:bg-emerald-50';
+    }
+
+    if (workspaceMetaEl) {
+        const fileCount = workspaceFiles.length;
+        workspaceMetaEl.innerHTML = `
+            <span>${fileCount} file${fileCount === 1 ? '' : 's'}</span>
+            <span class="truncate text-right">Entry: ${escapeHtml(entryLabel)}</span>
+        `;
+    }
+}
+
 function renderFileExplorer() {
     const fileListEl = document.getElementById('fileList');
-    const activeFileLabelEl = document.getElementById('activeFileLabel');
-    if (!fileListEl || !activeFileLabelEl) return;
-
-    activeFileLabelEl.innerText = activeFilePath || getPrimaryFileForLanguage(document.getElementById('language').value);
+    if (!fileListEl) return;
     const allFolders = getAllWorkspaceFolders();
     const renderBranch = (parentPath = '', depth = 0) => {
         const childFolders = allFolders.filter((folderPath) => getParentFolderPath(folderPath) === parentPath);
@@ -596,9 +652,12 @@ function renderFileExplorer() {
                 `;
             }),
             ...childFiles.map((file) => `
-                <button type="button" data-file-path="${escapeHtml(file.path)}" class="mb-1 flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${file.path === activeFilePath ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm' : 'border-transparent bg-white text-slate-600 hover:bg-slate-50'}" style="margin-left:${depth * 14}px;">
-                    <span class="text-slate-400">&#8226;</span>
-                    <span class="truncate">${escapeHtml(file.path.split('/').pop())}</span>
+                <button type="button" data-file-path="${escapeHtml(file.path)}" class="mb-1 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${file.path === activeFilePath ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm' : 'border-transparent bg-white/90 text-slate-600 hover:bg-slate-50'}" style="margin-left:${depth * 14}px;">
+                    <span class="flex min-w-0 items-center gap-2">
+                        <span class="text-slate-400">&#8226;</span>
+                        <span class="truncate">${escapeHtml(file.path.split('/').pop())}</span>
+                    </span>
+                    ${file.path === workspaceEntryFilePath ? '<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-emerald-700">Entry</span>' : ''}
                 </button>
             `),
         ].join('');
@@ -620,6 +679,7 @@ function renderFileExplorer() {
         button.onclick = () => setActiveFile(button.getAttribute('data-file-path'));
     });
 
+    syncEntryControls();
     syncDeleteFileButton();
 }
 
@@ -644,6 +704,7 @@ function setActiveFile(path) {
 function resetWorkspaceFiles(language, preferredFiles = null, preferredActiveFile = null, primaryContent = null, preferredFolders = null) {
     workspaceFiles = normalizeWorkspaceFiles(language, preferredFiles, primaryContent);
     workspaceFolders = normalizeWorkspaceFolders(preferredFolders);
+    workspaceEntryFilePath = resolveWorkspaceEntryFile(language, workspaceFiles, preferredActiveFile);
     activeFilePath = sanitizeWorkspacePath(preferredActiveFile) || workspaceFiles[0].path;
     const nextFile = workspaceFiles.find((file) => file.path === activeFilePath) || workspaceFiles[0];
     activeFilePath = nextFile.path;
@@ -680,18 +741,20 @@ async function importLocalFiles(fileList) {
         ...workspaceFolders,
         ...importedFiles.flatMap((file) => getAncestorFolderPaths(getParentFolderPath(file.path))),
     ]);
+    workspaceEntryFilePath = resolveWorkspaceEntryFile(document.getElementById('language').value, workspaceFiles, workspaceEntryFilePath);
     setActiveFile(importedFiles[0].path);
 }
 
 function getWorkspacePayload() {
     saveActiveFileContent();
     const language = document.getElementById('language').value;
-    const primaryPath = getPrimaryFileForLanguage(language);
-    const primaryFile = workspaceFiles.find((file) => file.path === primaryPath) || workspaceFiles[0] || { content: editorView.state.doc.toString() };
+    workspaceEntryFilePath = resolveWorkspaceEntryFile(language, workspaceFiles, workspaceEntryFilePath);
+    const entryPath = workspaceEntryFilePath;
+    const primaryFile = workspaceFiles.find((file) => file.path === entryPath) || workspaceFiles[0] || { content: editorView.state.doc.toString() };
     return {
         code: primaryFile.content || '',
         files: workspaceFiles.map((file) => ({ path: file.path, content: file.content || '' })),
-        entry_file: primaryPath,
+        entry_file: entryPath,
     };
 }
 
@@ -742,6 +805,12 @@ document.getElementById('language').addEventListener('change', (e) => {
 
 document.getElementById('language').dataset.previous = initialLang;
 
+document.getElementById('setEntryFileBtn').onclick = () => {
+    if (!activeFilePath) return;
+    workspaceEntryFilePath = activeFilePath;
+    renderFileExplorer();
+};
+
 document.getElementById('addFileBtn').onclick = () => {
     saveActiveFileContent();
     const requestedPath = prompt('Enter a new file path. Example: helpers/math.py');
@@ -756,6 +825,7 @@ document.getElementById('addFileBtn').onclick = () => {
         ...workspaceFolders,
         ...getAncestorFolderPaths(getParentFolderPath(normalizedPath)),
     ]);
+    if (!workspaceEntryFilePath) workspaceEntryFilePath = normalizedPath;
     setActiveFile(normalizedPath);
 };
 
@@ -791,12 +861,11 @@ document.getElementById('localFolderInput').addEventListener('change', async (ev
 });
 
 document.getElementById('deleteFileBtn').onclick = () => {
-    const language = document.getElementById('language').value;
-    const primaryFile = getPrimaryFileForLanguage(language);
-    if (activeFilePath === primaryFile) return;
+    if (activeFilePath === workspaceEntryFilePath) return;
     if (!confirm(`Delete ${activeFilePath}?`)) return;
     workspaceFiles = workspaceFiles.filter((file) => file.path !== activeFilePath);
-    const nextFile = workspaceFiles.find((file) => file.path === primaryFile) || workspaceFiles[0];
+    workspaceEntryFilePath = resolveWorkspaceEntryFile(document.getElementById('language').value, workspaceFiles, workspaceEntryFilePath);
+    const nextFile = workspaceFiles.find((file) => file.path === workspaceEntryFilePath) || workspaceFiles[0];
     activeFilePath = nextFile.path;
     editorView.dispatch({
         changes: { from: 0, to: editorView.state.doc.length, insert: nextFile.content || '' }
@@ -1123,6 +1192,7 @@ function persistCurrentCode() {
         files: workspaceFiles.map((file) => ({ path: file.path, content: file.content || '' })),
         folders: [...workspaceFolders],
         active_file: activeFilePath,
+        entry_file: workspaceEntryFilePath,
         language: document.getElementById('language').value,
         ts: Date.now()
     };
@@ -1139,7 +1209,15 @@ function restoreSavedCode(roomId, qId) {
             document.getElementById('language').dataset.previous = saved.language;
             editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(saved.language)) });
         }
-        resetWorkspaceFiles(saved.language || document.getElementById('language').value, saved.files, saved.active_file, saved.code || boilerplate[saved.language] || '', saved.folders || []);
+        resetWorkspaceFiles(
+            saved.language || document.getElementById('language').value,
+            saved.files,
+            saved.active_file,
+            saved.code || boilerplate[saved.language] || '',
+            saved.folders || []
+        );
+        workspaceEntryFilePath = resolveWorkspaceEntryFile(saved.language || document.getElementById('language').value, workspaceFiles, saved.entry_file || saved.active_file);
+        renderFileExplorer();
         return true;
     }
     return false;
@@ -1642,7 +1720,9 @@ function loadPastCode(id) {
     document.getElementById('language').value = sub.language;
     document.getElementById('language').dataset.previous = sub.language;
     editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(sub.language)) });
-    resetWorkspaceFiles(sub.language, sub.files, sub.entry_file, sub.code);
+    resetWorkspaceFiles(sub.language, sub.files, sub.entry_file || sub.active_file, sub.code);
+    workspaceEntryFilePath = resolveWorkspaceEntryFile(sub.language, workspaceFiles, sub.entry_file);
+    renderFileExplorer();
     renderSubmissionOutput(sub, submissionQuestionId);
     tabConsole.click();
 }

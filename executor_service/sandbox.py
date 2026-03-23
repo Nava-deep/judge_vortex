@@ -10,60 +10,32 @@ import time
 from dataclasses import dataclass
 
 LANG_CONFIG = {
-    "python": {"entry_filename": "main.py", "tools": ["python3"], "compile_cmd": None, "run_cmd": ["python3", "main.py"]},
-    "javascript": {"entry_filename": "main.js", "tools": ["node"], "compile_cmd": None, "run_cmd": ["node", "main.js"]},
-    "ruby": {"entry_filename": "main.rb", "tools": ["ruby"], "compile_cmd": None, "run_cmd": ["ruby", "main.rb"]},
-    "php": {"entry_filename": "main.php", "tools": ["php"], "compile_cmd": None, "run_cmd": ["php", "main.php"]},
+    "python": {"entry_filename": "main.py", "tools": ["python3"]},
+    "javascript": {"entry_filename": "main.js", "tools": ["node"]},
+    "ruby": {"entry_filename": "main.rb", "tools": ["ruby"]},
+    "php": {"entry_filename": "main.php", "tools": ["php"]},
     "cpp": {
         "entry_filename": "main.cpp",
         "tools": ["g++"],
-        "compile_cmd": ["/bin/sh", "-lc", "g++ -O3 $(find . -type f -name '*.cpp' | sort) -o out"],
-        "run_cmd": ["./out"],
     },
     "c": {
         "entry_filename": "main.c",
         "tools": ["gcc"],
-        "compile_cmd": ["/bin/sh", "-lc", "gcc -O3 $(find . -type f -name '*.c' | sort) -o out"],
-        "run_cmd": ["./out"],
     },
     "go": {
         "entry_filename": "main.go",
         "tools": ["go"],
-        "compile_cmd": ["/bin/sh", "-lc", "go build -o out $(find . -type f -name '*.go' | sort)"],
-        "run_cmd": ["./out"],
     },
-    "rust": {"entry_filename": "main.rs", "tools": ["rustc"], "compile_cmd": ["rustc", "-O", "main.rs", "-o", "out"], "run_cmd": ["./out"]},
+    "rust": {"entry_filename": "main.rs", "tools": ["rustc"]},
     "java": {
         "entry_filename": "Main.java",
         "tools": ["javac", "java"],
-        "compile_cmd": [
-            "javac",
-            "-J-Xms8m",
-            "-J-Xmx96m",
-            "-J-XX:ReservedCodeCacheSize=32m",
-            "-J-XX:CompressedClassSpaceSize=16m",
-            "-J-XX:+UseSerialGC",
-            "Main.java",
-        ],
-        "run_cmd": [
-            "java",
-            "-Xms8m",
-            "-Xmx64m",
-            "-XX:ReservedCodeCacheSize=32m",
-            "-XX:CompressedClassSpaceSize=16m",
-            "-XX:+UseSerialGC",
-            "-cp",
-            ".",
-            "Main",
-        ],
     },
     "typescript": {
         "entry_filename": "main.ts",
         "tools": ["npx", "node"],
-        "compile_cmd": ["npx", "tsc", "main.ts", "--target", "es2019", "--module", "commonjs", "--outDir", "dist"],
-        "run_cmd": ["node", "dist/main.js"],
     },
-    "sql": {"entry_filename": "query.sql", "tools": ["sqlite3"], "compile_cmd": None, "run_cmd": ["sqlite3", ":memory:", "-batch", "-init", "setup.sql", ".read query.sql"]},
+    "sql": {"entry_filename": "query.sql", "tools": ["sqlite3"]},
 }
 
 MAX_MEMORY_BYTES = int(os.getenv("EXECUTOR_MEMORY_BYTES", str(256 * 1024 * 1024)))
@@ -252,6 +224,71 @@ def _resolve_command(parts):
     return [os.path.realpath(resolved), *parts[1:]]
 
 
+def _normalize_relpath(path_value):
+    return str(path_value or "").replace("\\", "/")
+
+
+def _build_commands(language, entry_file):
+    normalized_entry_file = _normalize_relpath(entry_file)
+
+    if language == "python":
+        return None, ["python3", normalized_entry_file]
+    if language == "javascript":
+        return None, ["node", normalized_entry_file]
+    if language == "ruby":
+        return None, ["ruby", normalized_entry_file]
+    if language == "php":
+        return None, ["php", normalized_entry_file]
+    if language == "cpp":
+        return ["/bin/sh", "-lc", "g++ -O3 $(find . -type f -name '*.cpp' | sort) -o out"], ["./out"]
+    if language == "c":
+        return ["/bin/sh", "-lc", "gcc -O3 $(find . -type f -name '*.c' | sort) -o out"], ["./out"]
+    if language == "go":
+        return ["/bin/sh", "-lc", "go build -o out $(find . -type f -name '*.go' | sort)"], ["./out"]
+    if language == "rust":
+        return ["rustc", "-O", normalized_entry_file, "-o", "out"], ["./out"]
+    if language == "java":
+        class_name = os.path.splitext(os.path.basename(normalized_entry_file))[0]
+        class_dir = os.path.dirname(normalized_entry_file) or "."
+        return [
+            "javac",
+            "-J-Xms8m",
+            "-J-Xmx96m",
+            "-J-XX:ReservedCodeCacheSize=32m",
+            "-J-XX:CompressedClassSpaceSize=16m",
+            "-J-XX:+UseSerialGC",
+            normalized_entry_file,
+        ], [
+            "java",
+            "-Xms8m",
+            "-Xmx64m",
+            "-XX:ReservedCodeCacheSize=32m",
+            "-XX:CompressedClassSpaceSize=16m",
+            "-XX:+UseSerialGC",
+            "-cp",
+            class_dir,
+            class_name,
+        ]
+    if language == "typescript":
+        compiled_output = os.path.splitext(normalized_entry_file)[0] + ".js"
+        compiled_output = _normalize_relpath(os.path.join("dist", compiled_output))
+        return [
+            "npx",
+            "tsc",
+            normalized_entry_file,
+            "--target",
+            "es2019",
+            "--module",
+            "commonjs",
+            "--outDir",
+            "dist",
+        ], ["node", compiled_output]
+    if language == "sql":
+        return None, ["sqlite3", ":memory:", "-batch", "-init", "setup.sql", f".read {normalized_entry_file}"]
+
+    raise ValueError(f"Unsupported language {language}")
+
+
 def _get_isolate_dirs(language):
     language_dirs = LANGUAGE_ISOLATE_CONFIG.get(language, {}).get("dirs", [])
     return [*COMMON_ISOLATE_DIR_RULES, *language_dirs]
@@ -380,14 +417,21 @@ async def _prepare_native_execution(code, language, input_data="", files=None, e
     if missing_runtime is not None:
         return missing_runtime
 
-    config = LANG_CONFIG[language]
-    compile_cmd = _resolve_command(config["compile_cmd"]) if config["compile_cmd"] else None
-    run_cmd = _resolve_command(config["run_cmd"]) if config["run_cmd"] else None
     temp_dir_ctx = tempfile.TemporaryDirectory()
     temp_dir = temp_dir_ctx.name
 
     try:
-        _write_workspace_files(temp_dir, language, code, files=files, entry_file=entry_file, input_data=input_data)
+        resolved_entry_file = _write_workspace_files(
+            temp_dir,
+            language,
+            code,
+            files=files,
+            entry_file=entry_file,
+            input_data=input_data,
+        )
+        compile_cmd, run_cmd = _build_commands(language, resolved_entry_file)
+        compile_cmd = _resolve_command(compile_cmd) if compile_cmd else None
+        run_cmd = _resolve_command(run_cmd) if run_cmd else None
 
         if compile_cmd:
             try:
@@ -429,9 +473,6 @@ async def _prepare_isolate_execution(code, language, input_data="", files=None, 
     if missing_runtime is not None:
         return missing_runtime
 
-    config = LANG_CONFIG[language]
-    compile_cmd = _resolve_command(config["compile_cmd"]) if config["compile_cmd"] else None
-    run_cmd = _resolve_command(config["run_cmd"]) if config["run_cmd"] else None
     isolate_dirs = _get_isolate_dirs(language)
     isolate_env = _get_isolate_env(language)
     box_id = await _BOX_ID_QUEUE.get()
@@ -464,7 +505,17 @@ async def _prepare_isolate_execution(code, language, input_data="", files=None, 
         work_dir = os.path.join(box_root, "box")
         os.makedirs(os.path.join(work_dir, ".cache", "go-build"), exist_ok=True)
         os.makedirs(os.path.join(work_dir, "tmp"), exist_ok=True)
-        _write_workspace_files(work_dir, language, code, files=files, entry_file=entry_file, input_data=input_data)
+        resolved_entry_file = _write_workspace_files(
+            work_dir,
+            language,
+            code,
+            files=files,
+            entry_file=entry_file,
+            input_data=input_data,
+        )
+        compile_cmd, run_cmd = _build_commands(language, resolved_entry_file)
+        compile_cmd = _resolve_command(compile_cmd) if compile_cmd else None
+        run_cmd = _resolve_command(run_cmd) if run_cmd else None
 
         if compile_cmd:
             returncode, meta, comp_stdout, comp_stderr = await _run_isolate(
