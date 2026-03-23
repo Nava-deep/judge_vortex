@@ -52,6 +52,11 @@ cd ..
 
 # 4. DATABASE SYNC & RATE LIMIT RESET
 echo "Syncing Database Migrations..."
+echo "Waiting for PostgreSQL..."
+until docker exec vortex-postgres pg_isready -U "${POSTGRES_USER:-vortex_admin}" -d "${POSTGRES_DB:-judge_vortex_db}" >/dev/null 2>&1; do
+  sleep 1
+done
+
 if [ "${MAKE_MIGRATIONS}" = "1" ]; then
   python3 manage.py makemigrations > /dev/null
 fi

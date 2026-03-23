@@ -40,6 +40,8 @@ This starts:
 - Nginx
 - core and Java executors
 
+By default, Django now uses the PostgreSQL container from the Docker stack. SQLite remains available only as an explicit fallback by setting `DB_ENGINE=sqlite`.
+
 ### 4. Open the app
 
 - In the `Ports` tab, open forwarded port `53562`
