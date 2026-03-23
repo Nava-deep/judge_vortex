@@ -126,17 +126,55 @@
     Fullscreen paused. Re-enter to continue.
 </div>
 
-<div class="relative z-10 flex-1 flex overflow-hidden w-full p-4 gap-4">
+<div id="workspaceShell" class="relative z-10 flex-1 flex overflow-hidden w-full p-4 gap-4">
 
     <div id="leftPanel" class="flex flex-col min-w-[200px] rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)] bg-white/88 backdrop-blur-xl" style="width: 60%;">
-        <div id="editorTop" class="flex-1 relative bg-white overflow-hidden border-r border-slate-100">
-            <div id="editorContainer" class="absolute inset-0"></div>
+        <div id="editorTop" class="flex flex-1 bg-white overflow-hidden border-r border-slate-100">
+            <aside id="fileExplorer" class="hidden w-56 shrink-0 border-r border-slate-100 bg-slate-50/90 md:flex md:flex-col">
+                <div class="border-b border-slate-100 px-4 py-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Files</p>
+                            <p class="mt-1 text-xs font-bold text-slate-600">Workspace</p>
+                        </div>
+                        <button id="addFileBtn" type="button" class="rounded-xl border border-blue-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-50">
+                            + File
+                        </button>
+                    </div>
+                    <div class="mt-3 grid grid-cols-2 gap-2">
+                        <button id="addFolderBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            + Folder
+                        </button>
+                        <button id="uploadFileBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            Upload
+                        </button>
+                    </div>
+                    <button id="uploadFolderBtn" type="button" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
+                        Import Folder
+                    </button>
+                    <input id="localFileInput" type="file" multiple class="hidden" />
+                    <input id="localFolderInput" type="file" webkitdirectory directory multiple class="hidden" />
+                </div>
+                <div id="fileList" class="flex-1 overflow-y-auto p-3"></div>
+            </aside>
+            <div class="relative flex-1 overflow-hidden bg-white">
+                <div class="flex items-center justify-between border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+                    <div>
+                        <p class="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Editor</p>
+                        <p id="activeFileLabel" class="mt-1 text-sm font-black text-slate-800">main.py</p>
+                    </div>
+                    <button id="deleteFileBtn" type="button" class="rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 shadow-sm transition hover:bg-rose-50">
+                        Delete File
+                    </button>
+                </div>
+                <div id="editorContainer" class="absolute inset-x-0 bottom-0 top-[73px]"></div>
+            </div>
         </div>
 
         <div id="gutterV" class="gutter-v shrink-0 border-y border-gray-200 bg-gray-50"></div>
 
         <div id="inputBottom" class="bg-slate-50/90 p-3 flex flex-col shrink-0 border-r border-slate-100" style="height: 180px;">
-            <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin)</label>
+            <label id="inputBottomLabel" class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin)</label>
             <textarea id="customInput" placeholder="Enter custom test cases here..." class="flex-1 w-full bg-white border border-gray-300 rounded p-3 font-mono text-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 box-border resize-none transition shadow-sm"></textarea>
         </div>
     </div>
@@ -371,6 +409,10 @@ let isExamActive = false;
 let isDisqualified = false;
 let activeExamRoomId = null;
 let activeExamQuestionId = null;
+let workspaceFiles = [];
+let workspaceFolders = [];
+let activeFilePath = null;
+const collapsedFolderPaths = new Set();
 
 // EXAM TRACKERS & ANTI-CHEAT VARIABLES
 let totalAssignedQuestions = 0;
@@ -396,6 +438,19 @@ const boilerplate = {
     'php': '<?php\n\necho "Hello from Judge Vortex!\\n";\n?>',
     'sql': '-- Write your query here\nSELECT "Hello from Judge Vortex!" AS Welcome;'
 };
+const languagePrimaryFiles = {
+    'python': 'main.py',
+    'cpp': 'main.cpp',
+    'c': 'main.c',
+    'java': 'Main.java',
+    'javascript': 'main.js',
+    'typescript': 'main.ts',
+    'ruby': 'main.rb',
+    'go': 'main.go',
+    'rust': 'main.rs',
+    'php': 'main.php',
+    'sql': 'query.sql',
+};
 
 const languageConf = new Compartment();
 const editableConf = new Compartment();
@@ -414,6 +469,232 @@ const getLangExtension = (langStr) => {
     }
 };
 
+function getPrimaryFileForLanguage(language) {
+    return languagePrimaryFiles[language] || 'main.txt';
+}
+
+function sanitizeWorkspacePath(pathValue) {
+    const candidate = String(pathValue || '').replace(/\\/g, '/').trim().replace(/^\/+|\/+$/g, '');
+    if (!candidate || candidate.startsWith('.') || candidate.startsWith('~') || candidate.includes('//')) return null;
+    const parts = candidate.split('/').filter(Boolean);
+    if (!parts.length || parts.some((part) => part === '.' || part === '..')) return null;
+    return parts.join('/');
+}
+
+function getParentFolderPath(pathValue) {
+    const normalizedPath = sanitizeWorkspacePath(pathValue);
+    if (!normalizedPath || !normalizedPath.includes('/')) return '';
+    return normalizedPath.split('/').slice(0, -1).join('/');
+}
+
+function getAncestorFolderPaths(pathValue) {
+    const normalizedPath = sanitizeWorkspacePath(pathValue);
+    if (!normalizedPath) return [];
+    const parts = normalizedPath.split('/');
+    const folders = [];
+    for (let index = 1; index <= parts.length; index += 1) {
+        folders.push(parts.slice(0, index).join('/'));
+    }
+    return folders;
+}
+
+function normalizeWorkspaceFolders(folders = null) {
+    const normalized = new Set();
+    const incomingFolders = Array.isArray(folders) ? folders : [];
+
+    incomingFolders.forEach((folder) => {
+        const normalizedFolder = sanitizeWorkspacePath(folder);
+        if (!normalizedFolder) return;
+        getAncestorFolderPaths(normalizedFolder).forEach((path) => normalized.add(path));
+    });
+
+    return Array.from(normalized).sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeWorkspaceFiles(language, files = null, primaryContent = null) {
+    const primaryFilePath = getPrimaryFileForLanguage(language);
+    const normalized = [];
+    const seen = new Set();
+    const incomingFiles = Array.isArray(files) ? files : [];
+
+    incomingFiles.forEach((file) => {
+        const path = sanitizeWorkspacePath(file?.path || file?.name);
+        if (!path) return;
+        const content = String(file?.content ?? '');
+        if (seen.has(path)) {
+            const index = normalized.findIndex((item) => item.path === path);
+            if (index >= 0) normalized.splice(index, 1);
+        }
+        normalized.push({ path, content });
+        seen.add(path);
+    });
+
+    if (!seen.has(primaryFilePath)) {
+        normalized.unshift({
+            path: primaryFilePath,
+            content: primaryContent !== null ? String(primaryContent) : (boilerplate[language] || ''),
+        });
+    }
+
+    return normalized;
+}
+
+function getAllWorkspaceFolders() {
+    const merged = new Set(workspaceFolders);
+    workspaceFiles.forEach((file) => {
+        getAncestorFolderPaths(getParentFolderPath(file.path)).forEach((folderPath) => merged.add(folderPath));
+    });
+    return Array.from(merged).sort((a, b) => a.localeCompare(b));
+}
+
+function ensureFolderVisible(folderPath) {
+    getAncestorFolderPaths(folderPath).forEach((path) => collapsedFolderPaths.delete(path));
+}
+
+function saveActiveFileContent() {
+    if (!activeFilePath) return;
+    const activeFile = workspaceFiles.find((file) => file.path === activeFilePath);
+    if (!activeFile) return;
+    activeFile.content = editorView.state.doc.toString();
+}
+
+function syncDeleteFileButton() {
+    const deleteBtn = document.getElementById('deleteFileBtn');
+    if (!deleteBtn) return;
+    const isPrimary = activeFilePath === getPrimaryFileForLanguage(document.getElementById('language').value);
+    deleteBtn.disabled = isPrimary;
+    deleteBtn.className = isPrimary
+        ? 'rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 shadow-sm cursor-not-allowed'
+        : 'rounded-xl border border-rose-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-rose-600 shadow-sm transition hover:bg-rose-50';
+}
+
+function renderFileExplorer() {
+    const fileListEl = document.getElementById('fileList');
+    const activeFileLabelEl = document.getElementById('activeFileLabel');
+    if (!fileListEl || !activeFileLabelEl) return;
+
+    activeFileLabelEl.innerText = activeFilePath || getPrimaryFileForLanguage(document.getElementById('language').value);
+    const allFolders = getAllWorkspaceFolders();
+    const renderBranch = (parentPath = '', depth = 0) => {
+        const childFolders = allFolders.filter((folderPath) => getParentFolderPath(folderPath) === parentPath);
+        const childFiles = workspaceFiles.filter((file) => getParentFolderPath(file.path) === parentPath);
+
+        return [
+            ...childFolders.map((folderPath) => {
+                const folderName = folderPath.split('/').pop();
+                const collapsed = collapsedFolderPaths.has(folderPath);
+                return `
+                    <div class="mb-1">
+                        <button type="button" data-folder-path="${escapeHtml(folderPath)}" class="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs font-bold text-slate-600 transition hover:bg-slate-100" style="padding-left:${depth * 14 + 8}px;">
+                            <span class="text-[11px] text-slate-400">${collapsed ? '&#9656;' : '&#9662;'}</span>
+                            <span class="truncate">${escapeHtml(folderName)}</span>
+                        </button>
+                        <div class="${collapsed ? 'hidden' : ''}">
+                            ${renderBranch(folderPath, depth + 1)}
+                        </div>
+                    </div>
+                `;
+            }),
+            ...childFiles.map((file) => `
+                <button type="button" data-file-path="${escapeHtml(file.path)}" class="mb-1 flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${file.path === activeFilePath ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm' : 'border-transparent bg-white text-slate-600 hover:bg-slate-50'}" style="margin-left:${depth * 14}px;">
+                    <span class="text-slate-400">&#8226;</span>
+                    <span class="truncate">${escapeHtml(file.path.split('/').pop())}</span>
+                </button>
+            `),
+        ].join('');
+    };
+
+    fileListEl.innerHTML = renderBranch() || '<div class="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">No files in this workspace yet.</div>';
+
+    fileListEl.querySelectorAll('[data-folder-path]').forEach((button) => {
+        button.onclick = () => {
+            const folderPath = button.getAttribute('data-folder-path');
+            if (!folderPath) return;
+            if (collapsedFolderPaths.has(folderPath)) collapsedFolderPaths.delete(folderPath);
+            else collapsedFolderPaths.add(folderPath);
+            renderFileExplorer();
+        };
+    });
+
+    fileListEl.querySelectorAll('[data-file-path]').forEach((button) => {
+        button.onclick = () => setActiveFile(button.getAttribute('data-file-path'));
+    });
+
+    syncDeleteFileButton();
+}
+
+function setActiveFile(path) {
+    const normalizedPath = sanitizeWorkspacePath(path);
+    if (!normalizedPath) return;
+    const nextFile = workspaceFiles.find((file) => file.path === normalizedPath);
+    if (!nextFile) return;
+    if (activeFilePath !== normalizedPath) {
+        saveActiveFileContent();
+        activeFilePath = normalizedPath;
+    } else {
+        activeFilePath = normalizedPath;
+    }
+    ensureFolderVisible(getParentFolderPath(normalizedPath));
+    editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: nextFile.content || '' }
+    });
+    renderFileExplorer();
+}
+
+function resetWorkspaceFiles(language, preferredFiles = null, preferredActiveFile = null, primaryContent = null, preferredFolders = null) {
+    workspaceFiles = normalizeWorkspaceFiles(language, preferredFiles, primaryContent);
+    workspaceFolders = normalizeWorkspaceFolders(preferredFolders);
+    activeFilePath = sanitizeWorkspacePath(preferredActiveFile) || workspaceFiles[0].path;
+    const nextFile = workspaceFiles.find((file) => file.path === activeFilePath) || workspaceFiles[0];
+    activeFilePath = nextFile.path;
+    ensureFolderVisible(getParentFolderPath(activeFilePath));
+    editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: nextFile.content || '' }
+    });
+    renderFileExplorer();
+}
+
+async function importLocalFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    saveActiveFileContent();
+
+    const importedFiles = [];
+    for (const file of Array.from(fileList)) {
+        const rawPath = file.webkitRelativePath || file.name;
+        const normalizedPath = sanitizeWorkspacePath(rawPath);
+        if (!normalizedPath) continue;
+        const content = await file.text();
+        importedFiles.push({ path: normalizedPath, content });
+    }
+
+    if (!importedFiles.length) return;
+
+    importedFiles.forEach((importedFile) => {
+        const existingIndex = workspaceFiles.findIndex((file) => file.path === importedFile.path);
+        if (existingIndex >= 0) workspaceFiles.splice(existingIndex, 1, importedFile);
+        else workspaceFiles.push(importedFile);
+        ensureFolderVisible(getParentFolderPath(importedFile.path));
+    });
+
+    workspaceFolders = normalizeWorkspaceFolders([
+        ...workspaceFolders,
+        ...importedFiles.flatMap((file) => getAncestorFolderPaths(getParentFolderPath(file.path))),
+    ]);
+    setActiveFile(importedFiles[0].path);
+}
+
+function getWorkspacePayload() {
+    saveActiveFileContent();
+    const language = document.getElementById('language').value;
+    const primaryPath = getPrimaryFileForLanguage(language);
+    const primaryFile = workspaceFiles.find((file) => file.path === primaryPath) || workspaceFiles[0] || { content: editorView.state.doc.toString() };
+    return {
+        code: primaryFile.content || '',
+        files: workspaceFiles.map((file) => ({ path: file.path, content: file.content || '' })),
+        entry_file: primaryPath,
+    };
+}
+
 /* -------------------------
    Editor init
    ------------------------- */
@@ -431,6 +712,8 @@ const editorView = new EditorView({
     parent: document.getElementById('editorContainer')
 });
 
+resetWorkspaceFiles(initialLang, null, getPrimaryFileForLanguage(initialLang), boilerplate[initialLang] || boilerplate['python']);
+
 function setEditorEditable(isEditable) {
     editorView.dispatch({
         effects: editableConf.reconfigure(EditorView.editable.of(isEditable))
@@ -439,23 +722,93 @@ function setEditorEditable(isEditable) {
 
 document.getElementById('language').addEventListener('change', (e) => {
     const lang = e.target.value;
+    saveActiveFileContent();
     editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(lang)) });
-    const cur = editorView.state.doc.toString();
+    const cur = workspaceFiles.find((file) => file.path === activeFilePath)?.content || editorView.state.doc.toString();
     const clean = (s) => s.replace(/\s+/g, '');
     const isUntouchedBoilerplate = Object.values(boilerplate).some(bp => clean(bp) === clean(cur));
-    if (isUntouchedBoilerplate || clean(cur) === '') {
-        editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]} });
+    const onlyPrimaryFile = workspaceFiles.length === 1 && workspaceFiles[0].path === getPrimaryFileForLanguage(document.getElementById('language').dataset.previous || initialLang);
+    if (isUntouchedBoilerplate || clean(cur) === '' || onlyPrimaryFile) {
+        resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang], []);
+    } else if (confirm(`Switching to ${lang} resets the workspace files for that language. Continue?`)) {
+        resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang], []);
     } else {
-        if (confirm(`Overwrite custom code with the default ${lang} template?`)) {
-            editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: boilerplate[lang]} });
-        }
+        e.target.value = document.getElementById('language').dataset.previous || initialLang;
+        editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(e.target.value)) });
+        return;
     }
+    document.getElementById('language').dataset.previous = lang;
 });
+
+document.getElementById('language').dataset.previous = initialLang;
+
+document.getElementById('addFileBtn').onclick = () => {
+    saveActiveFileContent();
+    const requestedPath = prompt('Enter a new file path. Example: helpers/math.py');
+    const normalizedPath = sanitizeWorkspacePath(requestedPath);
+    if (!normalizedPath) return;
+    if (workspaceFiles.some((file) => file.path === normalizedPath)) {
+        alert('A file with that path already exists.');
+        return;
+    }
+    workspaceFiles.push({ path: normalizedPath, content: '' });
+    workspaceFolders = normalizeWorkspaceFolders([
+        ...workspaceFolders,
+        ...getAncestorFolderPaths(getParentFolderPath(normalizedPath)),
+    ]);
+    setActiveFile(normalizedPath);
+};
+
+document.getElementById('addFolderBtn').onclick = () => {
+    const requestedPath = prompt('Enter a folder path. Example: helpers/utils');
+    const normalizedPath = sanitizeWorkspacePath(requestedPath);
+    if (!normalizedPath) return;
+    workspaceFolders = normalizeWorkspaceFolders([...workspaceFolders, normalizedPath]);
+    ensureFolderVisible(normalizedPath);
+    renderFileExplorer();
+};
+
+document.getElementById('uploadFileBtn').onclick = () => {
+    const input = document.getElementById('localFileInput');
+    input.value = '';
+    input.click();
+};
+
+document.getElementById('uploadFolderBtn').onclick = () => {
+    const input = document.getElementById('localFolderInput');
+    input.value = '';
+    input.click();
+};
+
+document.getElementById('localFileInput').addEventListener('change', async (event) => {
+    await importLocalFiles(event.target.files);
+    event.target.value = '';
+});
+
+document.getElementById('localFolderInput').addEventListener('change', async (event) => {
+    await importLocalFiles(event.target.files);
+    event.target.value = '';
+});
+
+document.getElementById('deleteFileBtn').onclick = () => {
+    const language = document.getElementById('language').value;
+    const primaryFile = getPrimaryFileForLanguage(language);
+    if (activeFilePath === primaryFile) return;
+    if (!confirm(`Delete ${activeFilePath}?`)) return;
+    workspaceFiles = workspaceFiles.filter((file) => file.path !== activeFilePath);
+    const nextFile = workspaceFiles.find((file) => file.path === primaryFile) || workspaceFiles[0];
+    activeFilePath = nextFile.path;
+    editorView.dispatch({
+        changes: { from: 0, to: editorView.state.doc.length, insert: nextFile.content || '' }
+    });
+    renderFileExplorer();
+};
 
 /* -------------------------
    Resizing engine
    ------------------------- */
 const leftPanel = document.getElementById('leftPanel');
+const rightPanel = document.getElementById('rightPanel');
 const gutterH = document.getElementById('gutterH');
 const editorTop = document.getElementById('editorTop');
 const inputBottom = document.getElementById('inputBottom');
@@ -557,7 +910,12 @@ function renderSubmissionOutput(submission, questionId = null) {
     const hasJudgeCounts = totalTestcases > 0;
     const isAssignedExamQuestion = Boolean(resolvedQuestionId && assignedQuestionBank.has(resolvedQuestionId));
     const isCurrentExamRoomSubmission = Boolean(activeExamRoomId && submissionRoomId && Number(activeExamRoomId) === Number(submissionRoomId));
-    const showOnlyTestcaseSummary = Boolean(hasJudgeCounts && (isCurrentExamRoomSubmission || (currentMode === 'exam' && isAssignedExamQuestion)));
+    const isHiddenJudgeSubmission = Boolean(resolvedQuestionId);
+    const showOnlyTestcaseSummary = Boolean(
+        hasJudgeCounts &&
+        isHiddenJudgeSubmission &&
+        (isCurrentExamRoomSubmission || (currentMode === 'exam' && isAssignedExamQuestion))
+    );
     const testcaseSummaryPassed = hasJudgeCounts && passedTestcases === totalTestcases && totalTestcases > 0;
     const testcaseSummaryClass = testcaseSummaryPassed ? 'text-emerald-600' : 'text-rose-600';
     const testcaseSummaryLabelClass = testcaseSummaryPassed ? 'text-emerald-500' : 'text-rose-500';
@@ -759,9 +1117,12 @@ let savedCode = JSON.parse(localStorage.getItem('vortex_saved_code') || '{}');
 
 function persistCurrentCode() {
     if (!activeExamQuestionId || !activeExamRoomId) return;
+    saveActiveFileContent();
     const key = `${activeExamRoomId}_${activeExamQuestionId}`;
     savedCode[key] = {
-        code: editorView.state.doc.toString(),
+        files: workspaceFiles.map((file) => ({ path: file.path, content: file.content || '' })),
+        folders: [...workspaceFolders],
+        active_file: activeFilePath,
         language: document.getElementById('language').value,
         ts: Date.now()
     };
@@ -771,13 +1132,14 @@ setInterval(persistCurrentCode, 2000);
 
 function restoreSavedCode(roomId, qId) {
     const key = `${roomId}_${qId}`;
-    if (savedCode[key] && savedCode[key].code) {
+    if (savedCode[key]) {
         const saved = savedCode[key];
         if (saved.language && document.getElementById('language').value !== saved.language) {
             document.getElementById('language').value = saved.language;
+            document.getElementById('language').dataset.previous = saved.language;
             editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(saved.language)) });
         }
-        editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: saved.code } });
+        resetWorkspaceFiles(saved.language || document.getElementById('language').value, saved.files, saved.active_file, saved.code || boilerplate[saved.language] || '', saved.folders || []);
         return true;
     }
     return false;
@@ -819,6 +1181,8 @@ function getExamStateSignature(data) {
             description: question.description,
             total_marks: question.total_marks,
             testcase_count: question.testcase_count,
+            visible_testcase_count: question.visible_testcase_count,
+            visible_testcases: question.visible_testcases,
         })),
     });
 }
@@ -932,10 +1296,9 @@ function renderExamMode(data, code, options = {}) {
     if (deadlineInterval) clearInterval(deadlineInterval);
     if (waitingInterval) clearInterval(waitingInterval);
     document.getElementById('waitingRoomOverlay').classList.add('hidden');
+    switchToExam();
     activeExamRoomId = data.room_id;
     activeExamQuestionId = preserveSelection ? previousActiveQuestionId : null;
-    currentMode = "exam";
-    isExamActive = true;
     isDisqualified = false;
     lastExamStateSignature = getExamStateSignature(data);
     updateSubmitVisibility();
@@ -950,12 +1313,15 @@ function renderExamMode(data, code, options = {}) {
         qList.innerHTML += `
             <div id="q-card-${q.id}" class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition flex flex-col">
                 <div class="flex justify-between items-center mb-3">
-                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Q${index + 1}</span>
+                    <span class="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Question ${index + 1}</span>
                     <span id="q-badge-${q.id}" class="text-[10px] font-bold uppercase tracking-widest text-slate-400">Unattempted</span>
                 </div>
                 <h3 class="mb-1 line-clamp-1 text-left text-base font-black text-slate-800">${escapeHtml(q.title)}</h3>
                 <p class="mb-4 flex-1 line-clamp-3 text-left text-xs leading-5 text-slate-500">${escapeHtml(q.description)}</p>
-                <div class="mb-4 inline-flex items-center self-start rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(q.testcase_count || 1)} Testcases</div>
+                <div class="flex flex-wrap gap-2">
+                    <div class="inline-flex items-center self-start rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(q.visible_testcase_count || 0)} Visible</div>
+                    <div class="inline-flex items-center self-start rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">${escapeHtml(q.testcase_count || 1)} Hidden</div>
+                </div>
                 <button id="lock-btn-${q.id}" onclick="window.setActiveQuestion(${q.id}, ${data.room_id})" class="w-full rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-center text-xs font-black text-blue-700 shadow-sm transition hover:bg-blue-100">
                     Open Editor
                 </button>
@@ -1058,9 +1424,13 @@ runBtnEl.onclick = async (e) => {
     e.preventDefault();
     
     document.getElementById('tab-console').click();
-    const code = editorView.state.doc.toString();
     const lang = document.getElementById('language').value;
-    const input = document.getElementById('customInput').value;
+    const workspacePayload = getWorkspacePayload();
+    const activeQuestion = activeExamQuestionId ? getQuestionMeta(activeExamQuestionId) : null;
+    const visibleJudgeCases = currentMode === 'exam' && activeQuestion ? (activeQuestion.visible_testcases || []) : [];
+    const input = currentMode === 'exam' && visibleJudgeCases.length > 0
+        ? ''
+        : document.getElementById('customInput').value;
     terminalEl.innerHTML = '<div class="text-gray-500 font-mono">Running code...</div>';
 
     try {
@@ -1068,9 +1438,12 @@ runBtnEl.onclick = async (e) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
             body: JSON.stringify({
-                code: code,
+                code: workspacePayload.code,
+                files: workspacePayload.files,
+                entry_file: workspacePayload.entry_file,
                 language: lang,
                 user_input: input,
+                judge_cases: visibleJudgeCases,
                 time_limit_ms: 10000,
                 room_id: activeExamRoomId, 
                 question_id: null
@@ -1108,11 +1481,14 @@ submitBtnEl.onclick = async (e) => {
     renderExamSubmissionPlaceholder(activeExamQuestionId);
 
     try {
+        const workspacePayload = getWorkspacePayload();
         const res = await fetch('/api/submissions/submit/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
             body: JSON.stringify({
-                code: editorView.state.doc.toString(),
+                code: workspacePayload.code,
+                files: workspacePayload.files,
+                entry_file: workspacePayload.entry_file,
                 language: document.getElementById('language').value,
                 user_input: "", 
                 time_limit_ms: 10000,
@@ -1256,7 +1632,7 @@ async function fetchHistory() {
 
 function loadPastCode(id) {
     const sub = submissionCache[id];
-    if (!sub || !sub.code) return;
+    if (!sub || (!sub.code && (!Array.isArray(sub.files) || sub.files.length === 0))) return;
 
     const submissionQuestionId = Number(sub.question_id || sub.question || 0) || null;
     if (isExamActive && activeExamRoomId && submissionQuestionId && assignedQuestionBank.has(submissionQuestionId)) {
@@ -1264,8 +1640,9 @@ function loadPastCode(id) {
     }
 
     document.getElementById('language').value = sub.language;
+    document.getElementById('language').dataset.previous = sub.language;
     editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(sub.language)) });
-    editorView.dispatch({ changes: {from: 0, to: editorView.state.doc.length, insert: sub.code} });
+    resetWorkspaceFiles(sub.language, sub.files, sub.entry_file, sub.code);
     renderSubmissionOutput(sub, submissionQuestionId);
     tabConsole.click();
 }
@@ -1570,6 +1947,7 @@ window.setActiveQuestion = (qId, roomId, options = {}) => {
     
     if (question) {
         const viewer = document.getElementById('examQuestionViewer');
+        const visibleTestcases = Array.isArray(question.visible_testcases) ? question.visible_testcases : [];
         viewer.innerHTML = `
             <div class="w-full text-left">
                 <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
@@ -1585,7 +1963,7 @@ window.setActiveQuestion = (qId, roomId, options = {}) => {
                             ${escapeHtml(question.total_marks || 0)} pts
                         </span>
                         <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-widest text-slate-600">
-                            ${escapeHtml(question.testcase_count || 1)} Testcases
+                            ${escapeHtml(question.visible_testcase_count || 0)} visible / ${escapeHtml(question.testcase_count || 1)} hidden
                         </span>
                     </div>
                 </div>
@@ -1595,8 +1973,30 @@ window.setActiveQuestion = (qId, roomId, options = {}) => {
                         <div class="mt-3 whitespace-pre-wrap text-left text-sm leading-7 text-slate-700">${escapeHtml(question.description)}</div>
                     </section>
                     <section class="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm">
-                        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Judge Notes</p>
-                        <p class="mt-3 text-sm leading-6 text-slate-600">Only the statement is visible during the exam. Use <span class="font-bold text-slate-900">Run Test</span> for your own local checks, then <span class="font-bold text-slate-900">Submit</span> to evaluate against the judge.</p>
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Visible Testcases</p>
+                                <p class="mt-2 text-sm leading-6 text-slate-600">Use <span class="font-bold text-slate-900">Run Test</span> to validate against these visible cases. <span class="font-bold text-slate-900">Submit</span> runs the hidden judge cases.</p>
+                            </div>
+                            <span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">${escapeHtml(visibleTestcases.length || 0)} Visible</span>
+                        </div>
+                        <div class="mt-4 grid gap-4">
+                            ${visibleTestcases.length ? visibleTestcases.map((testcase, index) => `
+                                <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                                    <p class="text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Example ${index + 1}</p>
+                                    <div class="mt-3 grid gap-4 lg:grid-cols-2">
+                                        <div>
+                                            <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Input</p>
+                                            <pre class="mt-2 whitespace-pre-wrap break-words rounded-xl bg-white p-3 font-mono text-sm leading-6 text-slate-700">${escapeHtml(testcase.input || '')}</pre>
+                                        </div>
+                                        <div>
+                                            <p class="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">Expected Output</p>
+                                            <pre class="mt-2 whitespace-pre-wrap break-words rounded-xl bg-white p-3 font-mono text-sm leading-6 text-slate-700">${escapeHtml(testcase.expected_output || '')}</pre>
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('') : '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 p-4 text-sm text-slate-500">No visible testcases were added for this question yet.</div>'}
+                        </div>
                     </section>
                 </div>
             </div>
@@ -1605,13 +2005,8 @@ window.setActiveQuestion = (qId, roomId, options = {}) => {
 
     const restored = restoreSavedCode(resolvedRoomId, qId);
     if (!restored) {
-        const cur = editorView.state.doc.toString();
-        const clean = (s) => s.replace(/\s+/g, '');
-        const isUntouchedBoilerplate = Object.values(boilerplate).some(bp => clean(bp) === clean(cur));
-        if (isUntouchedBoilerplate || clean(cur) === '') {
-            const lang = document.getElementById('language').value;
-            editorView.dispatch({ changes: { from: 0, to: editorView.state.doc.length, insert: boilerplate[lang] } });
-        }
+        const lang = document.getElementById('language').value;
+        resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang] || '');
     }
 
     refreshExamActionState();
@@ -1744,6 +2139,13 @@ function switchToPractice() {
     updateSubmitVisibility();
     setEditorEditable(true);
     document.getElementById('runBtn').disabled = false;
+    document.getElementById('workspaceShell').classList.remove('exam-active');
+    leftPanel.style.order = '1';
+    rightPanel.style.order = '2';
+    leftPanel.style.width = '60%';
+    document.getElementById('inputBottom').classList.remove('hidden');
+    document.getElementById('inputBottomLabel').innerText = 'Standard Input (stdin)';
+    document.getElementById('customInput').placeholder = 'Enter custom test cases here...';
     
     document.getElementById('tab-exam').classList.add('hidden');
     
@@ -1756,6 +2158,11 @@ function switchToExam() {
     currentMode = "exam";
     updateSubmitVisibility();
     isExamActive = true;
+    document.getElementById('workspaceShell').classList.add('exam-active');
+    leftPanel.style.order = '2';
+    rightPanel.style.order = '1';
+    leftPanel.style.width = '52%';
+    document.getElementById('inputBottom').classList.add('hidden');
 }
 
 /* -------------------------

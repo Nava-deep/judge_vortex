@@ -10,16 +10,32 @@ import time
 from dataclasses import dataclass
 
 LANG_CONFIG = {
-    "python": {"filename": "main.py", "compile_cmd": None, "run_cmd": ["python3", "main.py"]},
-    "javascript": {"filename": "main.js", "compile_cmd": None, "run_cmd": ["node", "main.js"]},
-    "ruby": {"filename": "main.rb", "compile_cmd": None, "run_cmd": ["ruby", "main.rb"]},
-    "php": {"filename": "main.php", "compile_cmd": None, "run_cmd": ["php", "main.php"]},
-    "cpp": {"filename": "main.cpp", "compile_cmd": ["g++", "-O3", "main.cpp", "-o", "out"], "run_cmd": ["./out"]},
-    "c": {"filename": "main.c", "compile_cmd": ["gcc", "-O3", "main.c", "-o", "out"], "run_cmd": ["./out"]},
-    "go": {"filename": "main.go", "compile_cmd": ["go", "build", "-o", "out", "main.go"], "run_cmd": ["./out"]},
-    "rust": {"filename": "main.rs", "compile_cmd": ["rustc", "-O", "main.rs", "-o", "out"], "run_cmd": ["./out"]},
+    "python": {"entry_filename": "main.py", "tools": ["python3"], "compile_cmd": None, "run_cmd": ["python3", "main.py"]},
+    "javascript": {"entry_filename": "main.js", "tools": ["node"], "compile_cmd": None, "run_cmd": ["node", "main.js"]},
+    "ruby": {"entry_filename": "main.rb", "tools": ["ruby"], "compile_cmd": None, "run_cmd": ["ruby", "main.rb"]},
+    "php": {"entry_filename": "main.php", "tools": ["php"], "compile_cmd": None, "run_cmd": ["php", "main.php"]},
+    "cpp": {
+        "entry_filename": "main.cpp",
+        "tools": ["g++"],
+        "compile_cmd": ["/bin/sh", "-lc", "g++ -O3 $(find . -type f -name '*.cpp' | sort) -o out"],
+        "run_cmd": ["./out"],
+    },
+    "c": {
+        "entry_filename": "main.c",
+        "tools": ["gcc"],
+        "compile_cmd": ["/bin/sh", "-lc", "gcc -O3 $(find . -type f -name '*.c' | sort) -o out"],
+        "run_cmd": ["./out"],
+    },
+    "go": {
+        "entry_filename": "main.go",
+        "tools": ["go"],
+        "compile_cmd": ["/bin/sh", "-lc", "go build -o out $(find . -type f -name '*.go' | sort)"],
+        "run_cmd": ["./out"],
+    },
+    "rust": {"entry_filename": "main.rs", "tools": ["rustc"], "compile_cmd": ["rustc", "-O", "main.rs", "-o", "out"], "run_cmd": ["./out"]},
     "java": {
-        "filename": "Main.java",
+        "entry_filename": "Main.java",
+        "tools": ["javac", "java"],
         "compile_cmd": [
             "javac",
             "-J-Xms8m",
@@ -42,11 +58,12 @@ LANG_CONFIG = {
         ],
     },
     "typescript": {
-        "filename": "main.ts",
-        "compile_cmd": ["npx", "tsc", "main.ts", "--outFile", "solution.js", "--target", "es6"],
-        "run_cmd": ["node", "solution.js"],
+        "entry_filename": "main.ts",
+        "tools": ["npx", "node"],
+        "compile_cmd": ["npx", "tsc", "main.ts", "--target", "es2019", "--module", "commonjs", "--outDir", "dist"],
+        "run_cmd": ["node", "dist/main.js"],
     },
-    "sql": {"filename": "query.sql", "compile_cmd": None, "run_cmd": ["sqlite3", ":memory:", "-batch", "-init", "setup.sql", ".read query.sql"]},
+    "sql": {"entry_filename": "query.sql", "tools": ["sqlite3"], "compile_cmd": None, "run_cmd": ["sqlite3", ":memory:", "-batch", "-init", "setup.sql", ".read query.sql"]},
 }
 
 MAX_MEMORY_BYTES = int(os.getenv("EXECUTOR_MEMORY_BYTES", str(256 * 1024 * 1024)))
@@ -200,16 +217,7 @@ def _shell_command(parts):
 
 def _validate_runtime_tools(language):
     config = LANG_CONFIG[language]
-    filename = config["filename"]
-    compile_cmd = config["compile_cmd"]
-    run_cmd = config["run_cmd"]
-    del filename
-
-    tools = []
-    if compile_cmd:
-        tools.append(compile_cmd[0])
-    if run_cmd:
-        tools.append(run_cmd[0])
+    tools = config.get("tools") or []
 
     missing = []
     for tool in tools:
@@ -252,6 +260,60 @@ def _get_isolate_dirs(language):
 def _get_isolate_env(language):
     language_env = LANGUAGE_ISOLATE_CONFIG.get(language, {}).get("env", {})
     return {**DEFAULT_ISOLATE_ENV, **language_env}
+
+
+def _sanitize_relative_file_path(path_value):
+    candidate = str(path_value or "").replace("\\", "/").strip().strip("/")
+    if not candidate or candidate.startswith(".") or candidate.startswith("~") or "//" in candidate:
+        return None
+
+    parts = [part for part in candidate.split("/") if part]
+    if not parts or any(part in {".", ".."} for part in parts):
+        return None
+    return "/".join(parts)
+
+
+def _normalize_workspace_files(language, code, files, entry_file):
+    config = LANG_CONFIG[language]
+    default_entry_file = config["entry_filename"]
+    normalized_entry_file = _sanitize_relative_file_path(entry_file) or default_entry_file
+
+    normalized_files = []
+    seen_paths = set()
+    for raw_file in files or []:
+        if not isinstance(raw_file, dict):
+            continue
+        path = _sanitize_relative_file_path(raw_file.get("path") or raw_file.get("name"))
+        if not path:
+            continue
+        content = str(raw_file.get("content") or "")
+        if path in seen_paths:
+            normalized_files = [file for file in normalized_files if file["path"] != path]
+        normalized_files.append({"path": path, "content": content})
+        seen_paths.add(path)
+
+    if normalized_entry_file not in seen_paths:
+        normalized_files.insert(0, {"path": normalized_entry_file, "content": str(code or "")})
+        seen_paths.add(normalized_entry_file)
+
+    return normalized_files, normalized_entry_file
+
+
+def _write_workspace_files(base_dir, language, code, files=None, entry_file=None, input_data=""):
+    normalized_files, normalized_entry_file = _normalize_workspace_files(language, code, files, entry_file)
+
+    for file_spec in normalized_files:
+        file_path = os.path.join(base_dir, file_spec["path"])
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as handle:
+            handle.write(file_spec["content"])
+
+    if language == "sql":
+        setup_path = os.path.join(base_dir, "setup.sql")
+        with open(setup_path, "w", encoding="utf-8") as handle:
+            handle.write(input_data if input_data else "")
+
+    return normalized_entry_file
 
 
 async def _run_isolate(box_id, command_parts, time_limit_sec, wall_time_sec, process_limit, input_bytes=None, memory_kb=None, dir_rules=None, env_vars=None):
@@ -310,7 +372,7 @@ async def _run_isolate(box_id, command_parts, time_limit_sec, wall_time_sec, pro
     return proc.returncode, meta, stdout, stderr
 
 
-async def _prepare_native_execution(code, language, input_data=""):
+async def _prepare_native_execution(code, language, input_data="", files=None, entry_file=None):
     if language not in LANG_CONFIG:
         return _unsupported_language(language)
 
@@ -319,21 +381,13 @@ async def _prepare_native_execution(code, language, input_data=""):
         return missing_runtime
 
     config = LANG_CONFIG[language]
-    filename = config["filename"]
     compile_cmd = _resolve_command(config["compile_cmd"]) if config["compile_cmd"] else None
     run_cmd = _resolve_command(config["run_cmd"]) if config["run_cmd"] else None
     temp_dir_ctx = tempfile.TemporaryDirectory()
     temp_dir = temp_dir_ctx.name
 
     try:
-        source_path = os.path.join(temp_dir, filename)
-        with open(source_path, "w", encoding="utf-8") as handle:
-            handle.write(code)
-
-        if language == "sql":
-            setup_path = os.path.join(temp_dir, "setup.sql")
-            with open(setup_path, "w", encoding="utf-8") as handle:
-                handle.write(input_data if input_data else "")
+        _write_workspace_files(temp_dir, language, code, files=files, entry_file=entry_file, input_data=input_data)
 
         if compile_cmd:
             try:
@@ -367,7 +421,7 @@ async def _prepare_native_execution(code, language, input_data=""):
         return {"status": "SYSTEM_ERROR", "output": str(exc), "time_ms": 0}
 
 
-async def _prepare_isolate_execution(code, language, input_data=""):
+async def _prepare_isolate_execution(code, language, input_data="", files=None, entry_file=None):
     if language not in LANG_CONFIG:
         return _unsupported_language(language)
 
@@ -376,7 +430,6 @@ async def _prepare_isolate_execution(code, language, input_data=""):
         return missing_runtime
 
     config = LANG_CONFIG[language]
-    filename = config["filename"]
     compile_cmd = _resolve_command(config["compile_cmd"]) if config["compile_cmd"] else None
     run_cmd = _resolve_command(config["run_cmd"]) if config["run_cmd"] else None
     isolate_dirs = _get_isolate_dirs(language)
@@ -411,14 +464,7 @@ async def _prepare_isolate_execution(code, language, input_data=""):
         work_dir = os.path.join(box_root, "box")
         os.makedirs(os.path.join(work_dir, ".cache", "go-build"), exist_ok=True)
         os.makedirs(os.path.join(work_dir, "tmp"), exist_ok=True)
-        source_path = os.path.join(work_dir, filename)
-        with open(source_path, "w", encoding="utf-8") as handle:
-            handle.write(code)
-
-        if language == "sql":
-            setup_path = os.path.join(work_dir, "setup.sql")
-            with open(setup_path, "w", encoding="utf-8") as handle:
-                handle.write(input_data if input_data else "")
+        _write_workspace_files(work_dir, language, code, files=files, entry_file=entry_file, input_data=input_data)
 
         if compile_cmd:
             returncode, meta, comp_stdout, comp_stderr = await _run_isolate(
@@ -463,10 +509,10 @@ async def _prepare_isolate_execution(code, language, input_data=""):
         return {"status": "SYSTEM_ERROR", "output": str(exc), "time_ms": 0}
 
 
-async def prepare_execution(code, language, input_data=""):
+async def prepare_execution(code, language, input_data="", files=None, entry_file=None):
     if _use_isolate_backend() and not _should_use_native_fallback(language):
-        return await _prepare_isolate_execution(code, language, input_data)
-    return await _prepare_native_execution(code, language, input_data)
+        return await _prepare_isolate_execution(code, language, input_data, files=files, entry_file=entry_file)
+    return await _prepare_native_execution(code, language, input_data, files=files, entry_file=entry_file)
 
 
 async def _execute_native(prepared, input_data, time_limit_ms):
@@ -561,8 +607,8 @@ async def execute_prepared(prepared, input_data, time_limit_ms):
     return await _execute_native(prepared, input_data, time_limit_ms)
 
 
-async def run_code_in_sandbox(code, language, input_data, time_limit_ms):
-    prepared = await prepare_execution(code, language, input_data)
+async def run_code_in_sandbox(code, language, input_data, time_limit_ms, files=None, entry_file=None):
+    prepared = await prepare_execution(code, language, input_data, files=files, entry_file=entry_file)
     if isinstance(prepared, dict):
         return prepared
 

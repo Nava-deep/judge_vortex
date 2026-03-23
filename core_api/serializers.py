@@ -1,15 +1,36 @@
 from rest_framework import serializers
 # Import all the new models we created
 from .models import Submission, ExamRoom, ExamQuestion, RoomParticipant
-from .judging import build_hidden_testcases, get_hidden_testcase_count
+from .judging import (
+    build_hidden_testcases,
+    build_visible_testcases,
+    get_hidden_testcase_count,
+    get_visible_testcase_count,
+)
 
 class ExamQuestionSerializer(serializers.ModelSerializer):
     testcase_count = serializers.SerializerMethodField()
     testcases = serializers.SerializerMethodField()
+    visible_testcase_count = serializers.SerializerMethodField()
+    visible_testcases = serializers.SerializerMethodField()
 
     class Meta:
         model = ExamQuestion
-        fields = ['id', 'room', 'title', 'description', 'testcase_input', 'expected_output', 'total_marks', 'testcase_count', 'testcases']
+        fields = [
+            'id',
+            'room',
+            'title',
+            'description',
+            'visible_testcase_input',
+            'visible_expected_output',
+            'testcase_input',
+            'expected_output',
+            'total_marks',
+            'testcase_count',
+            'testcases',
+            'visible_testcase_count',
+            'visible_testcases',
+        ]
         read_only_fields = ['room']
 
     def get_testcase_count(self, obj):
@@ -18,16 +39,38 @@ class ExamQuestionSerializer(serializers.ModelSerializer):
     def get_testcases(self, obj):
         return build_hidden_testcases(obj.testcase_input, obj.expected_output)
 
+    def get_visible_testcase_count(self, obj):
+        return get_visible_testcase_count(obj.visible_testcase_input, obj.visible_expected_output)
+
+    def get_visible_testcases(self, obj):
+        return build_visible_testcases(obj.visible_testcase_input, obj.visible_expected_output)
+
 
 class StudentExamQuestionSerializer(serializers.ModelSerializer):
     testcase_count = serializers.SerializerMethodField()
+    visible_testcase_count = serializers.SerializerMethodField()
+    visible_testcases = serializers.SerializerMethodField()
 
     class Meta:
         model = ExamQuestion
-        fields = ['id', 'title', 'description', 'total_marks', 'testcase_count']
+        fields = [
+            'id',
+            'title',
+            'description',
+            'total_marks',
+            'testcase_count',
+            'visible_testcase_count',
+            'visible_testcases',
+        ]
 
     def get_testcase_count(self, obj):
         return get_hidden_testcase_count(obj.testcase_input, obj.expected_output)
+
+    def get_visible_testcase_count(self, obj):
+        return get_visible_testcase_count(obj.visible_testcase_input, obj.visible_expected_output)
+
+    def get_visible_testcases(self, obj):
+        return build_visible_testcases(obj.visible_testcase_input, obj.visible_expected_output)
 
 
 class ExamRoomSerializer(serializers.ModelSerializer):
@@ -92,7 +135,7 @@ class SubmissionSerializer(serializers.ModelSerializer):
         model = Submission
         fields = [
             'id', 'user', 'username', 'room', 'question', 
-            'code', 'language', 'status', 'output', 
+            'code', 'files', 'entry_file', 'language', 'status', 'output', 
             'execution_time_ms', 'submitted_at', 'awarded_marks',
             'passed_testcases', 'total_testcases'
         ]

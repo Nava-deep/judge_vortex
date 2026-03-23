@@ -9,7 +9,7 @@ def normalize_judge_output(value):
     return '\n'.join(line.rstrip() for line in normalized.split('\n'))
 
 
-def split_hidden_case_blocks(value):
+def split_case_blocks(value):
     normalized = str(value or '').replace('\r\n', '\n').replace('\r', '\n').strip('\n')
     if not normalized:
         return []
@@ -21,11 +21,11 @@ def split_hidden_case_blocks(value):
     ]
 
 
-def build_hidden_testcases(testcase_input, expected_output):
-    input_blocks = split_hidden_case_blocks(testcase_input)
+def build_testcases(testcase_input, expected_output):
+    input_blocks = split_case_blocks(testcase_input)
     output_blocks = [
         normalize_judge_output(block)
-        for block in split_hidden_case_blocks(expected_output)
+        for block in split_case_blocks(expected_output)
     ]
 
     if len(output_blocks) > 1 and len(input_blocks) == len(output_blocks):
@@ -43,5 +43,21 @@ def build_hidden_testcases(testcase_input, expected_output):
     }]
 
 
+def build_hidden_testcases(testcase_input, expected_output):
+    return build_testcases(testcase_input, expected_output)
+
+
+def build_visible_testcases(testcase_input, expected_output):
+    return build_testcases(testcase_input, expected_output)
+
+
+def get_testcase_count(testcase_input, expected_output):
+    return len(build_testcases(testcase_input, expected_output))
+
+
 def get_hidden_testcase_count(testcase_input, expected_output):
-    return len(build_hidden_testcases(testcase_input, expected_output))
+    return get_testcase_count(testcase_input, expected_output)
+
+
+def get_visible_testcase_count(testcase_input, expected_output):
+    return get_testcase_count(testcase_input, expected_output)

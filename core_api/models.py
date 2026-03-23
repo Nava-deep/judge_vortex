@@ -18,6 +18,28 @@ class UserProfile(models.Model):
         role = "Teacher" if self.is_teacher else "Student"
         return f"{self.user.username} - {role}"
 
+
+class SocialAccount(models.Model):
+    PROVIDER_CHOICES = (
+        ('google', 'Google'),
+        ('github', 'GitHub'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='social_accounts')
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
+    provider_user_id = models.CharField(max_length=255)
+    provider_username = models.CharField(max_length=255, blank=True, default='')
+    email = models.EmailField(blank=True, default='')
+    avatar_url = models.URLField(blank=True, default='')
+    extra_data = models.JSONField(default=dict, blank=True)
+    linked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('provider', 'provider_user_id')
+
+    def __str__(self):
+        return f"{self.provider}:{self.provider_user_id} -> {self.user.username}"
+
 # --- 2. Exam Management ---
 class ExamRoom(models.Model):
     teacher = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_rooms')
@@ -59,6 +81,8 @@ class ExamQuestion(models.Model):
     title = models.CharField(max_length=100)
     description = models.TextField()
     total_marks = models.IntegerField(default=10)
+    visible_testcase_input = models.TextField(blank=True, default="")
+    visible_expected_output = models.TextField(blank=True, default="")
     # Test cases for automated grading
     testcase_input = models.TextField(blank=True, default="")
     expected_output = models.TextField()
@@ -111,6 +135,8 @@ class Submission(models.Model):
     total_testcases = models.IntegerField(default=0)
     output = models.TextField(null=True, blank=True)
     code = models.TextField()
+    files = models.JSONField(default=list, blank=True)
+    entry_file = models.CharField(max_length=255, blank=True, default="")
     language = models.CharField(max_length=50)
     status = models.CharField(max_length=25, choices=STATUS_CHOICES, default='PENDING')
     

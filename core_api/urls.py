@@ -3,6 +3,9 @@ from .views import (
     login_view, 
     logout_view, 
     register_view,
+    social_auth_config_view,
+    google_social_login_view,
+    github_social_login_view,
     join_room_view,
     RoomParticipantDeleteView,
     RoomDetailView,
@@ -25,6 +28,9 @@ urlpatterns = [
     path('register/', register_view, name='register'),
     path('login/', login_view, name='login'),
     path('logout/', logout_view, name='logout'),
+    path('social/config/', social_auth_config_view, name='social-auth-config'),
+    path('social/google/', google_social_login_view, name='social-google-login'),
+    path('social/github/', github_social_login_view, name='social-github-login'),
     
     # 👨‍🏫 Teacher: Room & Question Management
     path('rooms/', ExamRoomListCreateView.as_view(), name='room-list-create'),

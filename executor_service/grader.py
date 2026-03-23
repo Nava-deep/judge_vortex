@@ -43,6 +43,8 @@ async def grade_submission(submission_data):
     user_input = submission_data.get('user_input', "") 
     time_limit = submission_data['time_limit_ms']
     judge_cases = submission_data.get('judge_cases') or []
+    files = submission_data.get('files') or []
+    entry_file = submission_data.get('entry_file') or None
 
     logger.info(f"Running submission {sub_id} through the executor pipeline...")
 
@@ -51,7 +53,13 @@ async def grade_submission(submission_data):
         passed_testcases = 0
         total_time_ms = 0
         last_output = ""
-        prepared = await prepare_execution(code, language, judge_cases[0].get('input', ''))
+        prepared = await prepare_execution(
+            code,
+            language,
+            judge_cases[0].get('input', ''),
+            files=files,
+            entry_file=entry_file,
+        )
 
         if isinstance(prepared, dict):
             await update_submission(
@@ -96,7 +104,14 @@ async def grade_submission(submission_data):
             prepared.cleanup()
 
     # Await the new async sandbox!
-    result = await run_code_in_sandbox(code, language, user_input, time_limit)
+    result = await run_code_in_sandbox(
+        code,
+        language,
+        user_input,
+        time_limit,
+        files=files,
+        entry_file=entry_file,
+    )
 
     if result['status'] == 'TLE':
         await update_submission(sub_id, 'TLE', "Time Limit Exceeded", time_limit)

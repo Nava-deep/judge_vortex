@@ -2,9 +2,12 @@ import json
 import os
 import random
 import logging
+import re
+import secrets
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.text import slugify
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework import permissions, status, generics
@@ -19,17 +22,42 @@ from channels.layers import get_channel_layer
 from kafka import KafkaProducer
 from rest_framework import serializers
 from django.views.decorators.csrf import csrf_exempt
+import requests
 
 from .models import *
 from .serializers import *
 from .throttles import DynamicQueueThrottle
-from .judging import build_hidden_testcases, get_hidden_testcase_count, normalize_judge_output
+from .judging import (
+    build_hidden_testcases,
+    build_visible_testcases,
+    get_hidden_testcase_count,
+    normalize_judge_output,
+)
 from execution_routing import get_submission_topic
 
 logger = logging.getLogger(__name__)
 _kafka_producer = None
 KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092").split(",") if server.strip()]
 AUTO_DISQUALIFY_SENTINEL = "DISQUALIFIED_AUTO_SUBMIT"
+MAX_SUBMISSION_FILES = 32
+MAX_FILE_PATH_LENGTH = 180
+LANGUAGE_ENTRY_FILES = {
+    'python': 'main.py',
+    'javascript': 'main.js',
+    'ruby': 'main.rb',
+    'php': 'main.php',
+    'cpp': 'main.cpp',
+    'c': 'main.c',
+    'go': 'main.go',
+    'rust': 'main.rs',
+    'java': 'Main.java',
+    'typescript': 'main.ts',
+    'sql': 'query.sql',
+}
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
+GITHUB_CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '').strip()
+GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '').strip()
+GITHUB_REDIRECT_BASE = os.getenv('GITHUB_REDIRECT_BASE', '').strip()
 
 
 def get_kafka_producer():
@@ -47,6 +75,14 @@ def parse_non_negative_int(value, default=0):
         return max(int(value), 0)
     except (TypeError, ValueError):
         return default
+
+
+def parse_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
 def get_participant_solved_question_ids(participant):
@@ -68,6 +104,284 @@ def lock_participant_access(participant):
     participant.access_locked_at = timezone.now()
     participant.save(update_fields=['access_locked', 'access_locked_at'])
     return True
+
+
+def get_default_entry_file(language):
+    return LANGUAGE_ENTRY_FILES.get(str(language or '').strip().lower(), 'main.txt')
+
+
+def sanitize_relative_file_path(path_value):
+    candidate = str(path_value or '').replace('\\', '/').strip().strip('/')
+    if not candidate:
+        return None
+    if candidate.startswith('.') or candidate.startswith('~') or '//' in candidate:
+        return None
+
+    parts = [part for part in candidate.split('/') if part]
+    if not parts or any(part in {'.', '..'} for part in parts):
+        return None
+
+    normalized = '/'.join(parts)
+    if len(normalized) > MAX_FILE_PATH_LENGTH:
+        return None
+    return normalized
+
+
+def normalize_submission_files(language, code, files_payload, entry_file=None):
+    parsed_files = files_payload
+    if isinstance(parsed_files, str):
+        try:
+            parsed_files = json.loads(parsed_files)
+        except json.JSONDecodeError as exc:
+            raise serializers.ValidationError({'files': f'Invalid files payload: {exc}'})
+
+    if parsed_files in (None, ''):
+        parsed_files = []
+
+    if not isinstance(parsed_files, list):
+        raise serializers.ValidationError({'files': 'Files payload must be an array of objects.'})
+
+    normalized_files = []
+    seen_paths = set()
+    for raw_file in parsed_files[:MAX_SUBMISSION_FILES]:
+        if not isinstance(raw_file, dict):
+            raise serializers.ValidationError({'files': 'Each file entry must be an object.'})
+
+        path = sanitize_relative_file_path(raw_file.get('path') or raw_file.get('name'))
+        if not path:
+            raise serializers.ValidationError({'files': 'Each file must use a safe relative path.'})
+
+        content = str(raw_file.get('content') or '')
+        if path in seen_paths:
+            normalized_files = [file for file in normalized_files if file['path'] != path]
+        normalized_files.append({'path': path, 'content': content})
+        seen_paths.add(path)
+
+    default_entry_file = get_default_entry_file(language)
+    resolved_entry_file = sanitize_relative_file_path(entry_file) or default_entry_file
+
+    if resolved_entry_file not in seen_paths:
+        normalized_files.insert(0, {'path': resolved_entry_file, 'content': str(code or '')})
+        seen_paths.add(resolved_entry_file)
+
+    primary_file = next((file for file in normalized_files if file['path'] == resolved_entry_file), None)
+    if primary_file is None:
+        raise serializers.ValidationError({'entry_file': 'The selected entry file was not found in the workspace.'})
+
+    return normalized_files, resolved_entry_file, primary_file['content']
+
+
+def normalize_judge_cases_payload(judge_cases_payload):
+    parsed_cases = judge_cases_payload
+    if isinstance(parsed_cases, str):
+        try:
+            parsed_cases = json.loads(parsed_cases)
+        except json.JSONDecodeError as exc:
+            raise serializers.ValidationError({'judge_cases': f'Invalid testcase payload: {exc}'})
+
+    if parsed_cases in (None, ''):
+        return []
+
+    if not isinstance(parsed_cases, list):
+        raise serializers.ValidationError({'judge_cases': 'Visible testcases must be sent as an array.'})
+
+    normalized_cases = []
+    for raw_case in parsed_cases:
+        if not isinstance(raw_case, dict):
+            raise serializers.ValidationError({'judge_cases': 'Each testcase must be an object.'})
+        normalized_cases.append({
+            'input': str(raw_case.get('input') or ''),
+            'expected_output': normalize_judge_output(raw_case.get('expected_output') or ''),
+        })
+
+    return normalized_cases
+
+
+def build_provider_username_candidates(provider, provider_payload):
+    provider = str(provider or '').strip().lower()
+    candidates = []
+    raw_candidates = [
+        provider_payload.get('provider_username'),
+        provider_payload.get('username'),
+        provider_payload.get('login'),
+        provider_payload.get('email', '').split('@')[0] if provider_payload.get('email') else '',
+        provider_payload.get('name'),
+        provider_payload.get('display_name'),
+    ]
+
+    for raw_value in raw_candidates:
+        cleaned = slugify(str(raw_value or '').strip()).replace('-', '_')
+        cleaned = re.sub(r'[^a-z0-9_]+', '', cleaned.lower())
+        cleaned = cleaned.strip('_')
+        if not cleaned:
+            continue
+        if cleaned[0].isdigit():
+            cleaned = f'{provider}_{cleaned}'
+        candidates.append(cleaned[:24])
+
+    provider_prefix = f'{provider}_{provider_payload.get("provider_user_id", "")}'
+    provider_prefix = slugify(provider_prefix).replace('-', '_').strip('_')
+    if provider_prefix:
+        candidates.append(provider_prefix[:24])
+
+    candidates.append(f'{provider}_user')
+    # Preserve order while removing duplicates
+    return list(dict.fromkeys([candidate for candidate in candidates if candidate]))
+
+
+def generate_unique_provider_username(provider, provider_payload):
+    for base_candidate in build_provider_username_candidates(provider, provider_payload):
+        if not User.objects.filter(username=base_candidate).exists():
+            return base_candidate
+
+        for suffix in range(2, 500):
+            candidate = f'{base_candidate[:20]}_{suffix}'
+            if not User.objects.filter(username=candidate).exists():
+                return candidate
+
+    fallback = f'{provider}_{secrets.token_hex(4)}'
+    while User.objects.filter(username=fallback).exists():
+        fallback = f'{provider}_{secrets.token_hex(4)}'
+    return fallback
+
+
+def get_or_create_social_user(provider, provider_payload, is_teacher=False):
+    provider_user_id = str(provider_payload.get('provider_user_id') or '').strip()
+    if not provider_user_id:
+        raise serializers.ValidationError({'error': 'Missing provider user identifier.'})
+
+    social_account = SocialAccount.objects.select_related('user').filter(
+        provider=provider,
+        provider_user_id=provider_user_id,
+    ).first()
+
+    if social_account:
+        user = social_account.user
+        social_account.provider_username = provider_payload.get('provider_username', social_account.provider_username or '')
+        social_account.email = provider_payload.get('email', social_account.email or '')
+        social_account.avatar_url = provider_payload.get('avatar_url', social_account.avatar_url or '')
+        social_account.extra_data = provider_payload
+        social_account.save(update_fields=['provider_username', 'email', 'avatar_url', 'extra_data'])
+        profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'is_teacher': is_teacher})
+        return user, profile, False
+
+    email = str(provider_payload.get('email') or '').strip().lower()
+    user = None
+    if email:
+        user = User.objects.filter(email__iexact=email).first()
+
+    created = False
+    if user is None:
+        username = generate_unique_provider_username(provider, provider_payload)
+        user = User.objects.create_user(
+            username=username,
+            email=email or '',
+            password=secrets.token_urlsafe(24),
+        )
+        created = True
+
+    profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'is_teacher': is_teacher})
+
+    SocialAccount.objects.create(
+        user=user,
+        provider=provider,
+        provider_user_id=provider_user_id,
+        provider_username=provider_payload.get('provider_username', ''),
+        email=email,
+        avatar_url=provider_payload.get('avatar_url', ''),
+        extra_data=provider_payload,
+    )
+
+    return user, profile, created
+
+
+def get_social_auth_config(request):
+    redirect_base = GITHUB_REDIRECT_BASE or (request.build_absolute_uri('/login/').rstrip('/') if request is not None else '')
+    return {
+        'google_client_id': GOOGLE_CLIENT_ID,
+        'github_client_id': GITHUB_CLIENT_ID,
+        'github_redirect_uri': redirect_base,
+        'enabled': {
+            'google': bool(GOOGLE_CLIENT_ID),
+            'github': bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET),
+        }
+    }
+
+
+def verify_google_identity_token(id_token):
+    if not GOOGLE_CLIENT_ID:
+        raise serializers.ValidationError({'error': 'Google sign-in is not configured.'})
+
+    response = requests.get(
+        'https://oauth2.googleapis.com/tokeninfo',
+        params={'id_token': id_token},
+        timeout=8,
+    )
+    payload = response.json() if response.ok else {}
+    if not response.ok:
+        raise serializers.ValidationError({'error': payload.get('error_description') or 'Google token verification failed.'})
+
+    aud = str(payload.get('aud') or '').strip()
+    if aud != GOOGLE_CLIENT_ID:
+        raise serializers.ValidationError({'error': 'Google token audience mismatch.'})
+
+    return {
+        'provider_user_id': str(payload.get('sub') or ''),
+        'provider_username': payload.get('email', '').split('@')[0] if payload.get('email') else '',
+        'email': payload.get('email', ''),
+        'name': payload.get('name', ''),
+        'avatar_url': payload.get('picture', ''),
+        'email_verified': str(payload.get('email_verified', '')).lower() == 'true',
+    }
+
+
+def exchange_github_code_for_profile(code, redirect_uri):
+    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
+        raise serializers.ValidationError({'error': 'GitHub sign-in is not configured.'})
+
+    token_response = requests.post(
+        'https://github.com/login/oauth/access_token',
+        headers={'Accept': 'application/json'},
+        data={
+            'client_id': GITHUB_CLIENT_ID,
+            'client_secret': GITHUB_CLIENT_SECRET,
+            'code': code,
+            'redirect_uri': redirect_uri or GITHUB_REDIRECT_BASE or '',
+        },
+        timeout=8,
+    )
+    token_payload = token_response.json() if token_response.ok else {}
+    access_token = token_payload.get('access_token')
+    if not access_token:
+        raise serializers.ValidationError({'error': token_payload.get('error_description') or 'GitHub token exchange failed.'})
+
+    headers = {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': f'Bearer {access_token}',
+        'X-GitHub-Api-Version': '2022-11-28',
+    }
+    user_response = requests.get('https://api.github.com/user', headers=headers, timeout=8)
+    user_payload = user_response.json() if user_response.ok else {}
+    if not user_response.ok:
+        raise serializers.ValidationError({'error': user_payload.get('message') or 'GitHub profile lookup failed.'})
+
+    email = user_payload.get('email') or ''
+    if not email:
+        emails_response = requests.get('https://api.github.com/user/emails', headers=headers, timeout=8)
+        if emails_response.ok:
+            emails_payload = emails_response.json()
+            primary_email = next((item.get('email') for item in emails_payload if item.get('primary') and item.get('verified')), None)
+            fallback_email = next((item.get('email') for item in emails_payload if item.get('verified')), None)
+            email = primary_email or fallback_email or ''
+
+    return {
+        'provider_user_id': str(user_payload.get('id') or ''),
+        'provider_username': user_payload.get('login', ''),
+        'email': email,
+        'name': user_payload.get('name', ''),
+        'avatar_url': user_payload.get('avatar_url', ''),
+        'profile_url': user_payload.get('html_url', ''),
+    }
 
 # ==========================================
 # 1. AUTHENTICATION ENDPOINTS
@@ -132,6 +446,63 @@ def logout_view(request):
     return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
 
 
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def social_auth_config_view(request):
+    return Response(get_social_auth_config(request), status=status.HTTP_200_OK)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def google_social_login_view(request):
+    id_token = request.data.get('id_token')
+    is_teacher = parse_bool(request.data.get('is_teacher'), False)
+    if not id_token:
+        return Response({'error': 'Google identity token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    provider_payload = verify_google_identity_token(id_token)
+    user, profile, _ = get_or_create_social_user('google', provider_payload, is_teacher=is_teacher)
+    token, _ = Token.objects.get_or_create(user=user)
+
+    return Response({
+        'token': token.key,
+        'user_id': user.id,
+        'username': user.username,
+        'is_teacher': profile.is_teacher,
+        'provider': 'google',
+        'message': 'Google login successful',
+    }, status=status.HTTP_200_OK)
+
+
+@csrf_exempt
+@api_view(['POST'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def github_social_login_view(request):
+    code = request.data.get('code')
+    redirect_uri = request.data.get('redirect_uri')
+    is_teacher = parse_bool(request.data.get('is_teacher'), False)
+
+    if not code:
+        return Response({'error': 'GitHub authorization code is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    provider_payload = exchange_github_code_for_profile(code, redirect_uri)
+    user, profile, _ = get_or_create_social_user('github', provider_payload, is_teacher=is_teacher)
+    token, _ = Token.objects.get_or_create(user=user)
+
+    return Response({
+        'token': token.key,
+        'user_id': user.id,
+        'username': user.username,
+        'is_teacher': profile.is_teacher,
+        'provider': 'github',
+        'message': 'GitHub login successful',
+    }, status=status.HTTP_200_OK)
+
+
 # ==========================================
 # 2. TEACHER EXAM MANAGEMENT ENDPOINTS
 # ==========================================
@@ -173,15 +544,16 @@ class RoomParticipantListView(APIView):
 
     def get(self, request, room_id):
         room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
-        # select_related makes it highly efficient to grab the connected User model
-        participants = RoomParticipant.objects.filter(room=room, access_locked=False).select_related('student')
+        participants = RoomParticipant.objects.filter(room=room).select_related('student').order_by('student__username')
         
         data = []
         for p in participants:
             data.append({
                 "student_id": p.student.id,
-                "username": p.student.username, # 🟢 Grabs the actual string name!
-                "joined_at": p.joined_at.isoformat() if p.joined_at else None
+                "username": p.student.username,
+                "joined_at": p.joined_at.isoformat() if p.joined_at else None,
+                "access_locked": p.access_locked,
+                "access_locked_at": p.access_locked_at.isoformat() if p.access_locked_at else None,
             })
         return Response(data)
 
@@ -190,18 +562,27 @@ class RoomSubmissionsListView(APIView):
 
     def get(self, request, room_id):
         room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
-        submissions = Submission.objects.filter(room=room).select_related('user').order_by('-submitted_at')
+        submissions = Submission.objects.filter(room=room).select_related('user', 'question').order_by('-submitted_at')
         
         data = []
         for sub in submissions:
             data.append({
                 "id": sub.id,
                 "student_id": sub.user_id,
-                "student_name": sub.user.username, # 🟢 Grabs the actual string name!
+                "student_name": sub.user.username,
                 "question_id": sub.question_id,
+                "question_title": sub.question.title if sub.question else None,
                 "status": sub.status,
-                "total_score": sub.awarded_marks,  # Ensures the score maps to the frontend
-                "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None
+                "total_score": sub.awarded_marks,
+                "submitted_at": sub.submitted_at.isoformat() if sub.submitted_at else None,
+                "language": sub.language,
+                "code": sub.code,
+                "files": sub.files,
+                "entry_file": sub.entry_file,
+                "output": sub.output,
+                "execution_time_ms": sub.execution_time_ms,
+                "passed_testcases": sub.passed_testcases,
+                "total_testcases": sub.total_testcases,
             })
         return Response(data)
 
@@ -248,30 +629,42 @@ class RoomParticipantDeleteView(APIView):
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, room_id, student_id):
-        # 1. Verify the teacher owns this room
         room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
-        
-        # 2. Find the participation record and permanently lock further access
         participant = get_object_or_404(RoomParticipant, room=room, student_id=student_id)
-        lock_participant_access(participant)
+        did_lock = lock_participant_access(participant)
 
-        # 🟢 3. Broadcast an INSTANT KICK event via WebSockets to the student
-        try:
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                f'user_{student_id}',
-                {
-                    'type': 'send_submission_update', 
-                    'data': {
-                        'action': 'KICKED',
-                        'room_id': room.id
+        if did_lock:
+            try:
+                channel_layer = get_channel_layer()
+                async_to_sync(channel_layer.group_send)(
+                    f'user_{student_id}',
+                    {
+                        'type': 'send_submission_update', 
+                        'data': {
+                            'action': 'KICKED',
+                            'room_id': room.id
+                        }
                     }
-                }
-            )
-        except Exception as ws_error:
-            logger.error(f"WebSocket Kick Broadcast Failed: {ws_error}")
+                )
+            except Exception as ws_error:
+                logger.error(f"WebSocket Kick Broadcast Failed: {ws_error}")
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response({'message': 'Student blocked successfully.'}, status=status.HTTP_200_OK)
+
+    def patch(self, request, room_id, student_id):
+        room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
+        participant = get_object_or_404(RoomParticipant, room=room, student_id=student_id)
+        raw_value = request.data.get('access_locked')
+        should_lock = str(raw_value).lower() in {'1', 'true', 'yes', 'on'}
+
+        if should_lock:
+            lock_participant_access(participant)
+            return Response({'message': 'Student blocked successfully.'}, status=status.HTTP_200_OK)
+
+        participant.access_locked = False
+        participant.access_locked_at = None
+        participant.save(update_fields=['access_locked', 'access_locked_at'])
+        return Response({'message': 'Student unblocked successfully.'}, status=status.HTTP_200_OK)
 
 
 class StudentRoomLockView(APIView):
@@ -393,6 +786,8 @@ class SubmissionCreateView(generics.CreateAPIView):
         user_custom_input = self.request.data.get('user_input', "")
         room_id = self.request.data.get('room_id') or None
         question_id = self.request.data.get('question_id') or None
+        incoming_files = self.request.data.get('files')
+        incoming_entry_file = self.request.data.get('entry_file') or ''
         participant = None
         question = None
         judge_cases = []
@@ -410,7 +805,6 @@ class SubmissionCreateView(generics.CreateAPIView):
 
         # 🟢 Distinguish between "Run Test" and "Final Submit"
         if question_id:
-            # If there is a question ID, it's a final submit. Override the stdin with hidden cases.
             question = get_object_or_404(ExamQuestion, id=question_id)
             if room_id is None:
                 room_id = question.room_id
@@ -420,6 +814,8 @@ class SubmissionCreateView(generics.CreateAPIView):
                 })
             judge_cases = build_hidden_testcases(question.testcase_input, question.expected_output)
             user_custom_input = question.testcase_input
+        else:
+            judge_cases = normalize_judge_cases_payload(self.request.data.get('judge_cases'))
 
         if room_id:
             participant = RoomParticipant.objects.filter(
@@ -442,12 +838,22 @@ class SubmissionCreateView(generics.CreateAPIView):
                 "error": "This question is not assigned to you for this exam."
             })
 
+        normalized_files, resolved_entry_file, primary_code = normalize_submission_files(
+            self.request.data.get('language'),
+            self.request.data.get('code', ''),
+            incoming_files,
+            incoming_entry_file,
+        )
+
         # Save the submission to the DB
         with transaction.atomic():
             submission = serializer.save(
                 user=self.request.user,
                 room_id=room_id,
                 question_id=question_id,
+                code=primary_code,
+                files=normalized_files,
+                entry_file=resolved_entry_file,
                 passed_testcases=0,
                 total_testcases=len(judge_cases) if judge_cases else 0
             )
@@ -460,6 +866,8 @@ class SubmissionCreateView(generics.CreateAPIView):
         message = {
             'submission_id': submission.id,
             'code': submission.code,
+            'files': submission.files,
+            'entry_file': submission.entry_file,
             'language': submission.language,
             'user_input': user_custom_input,
             'time_limit_ms': self.request.data.get('time_limit_ms', 10000), 
@@ -561,6 +969,7 @@ class SubmissionUpdateView(APIView):
                         'type': 'send_submission_update',
                         'data': {
                             'submission_id': submission.id,
+                            'room_id': submission.room_id,
                             'question_id': submission.question_id,
                             'status': submission.status, 
                             'output': submission.output,

@@ -224,12 +224,22 @@
                 <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
                     <div class="flex items-center justify-between gap-3">
                         <div>
-                            <p class="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Judge Testcases</p>
-                            <p class="text-sm text-slate-500 mt-1">Each testcase stores one input and one expected output.</p>
+                            <p class="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Visible Testcases</p>
+                            <p class="text-sm text-slate-500 mt-1">Students can run these cases directly from the question panel.</p>
                         </div>
-                        <button id="addTestcaseBtn" type="button" class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-blue-700">+ Add Testcase</button>
+                        <button id="addVisibleTestcaseBtn" type="button" class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-blue-700">+ Add Visible</button>
                     </div>
-                    <div id="questionTestcaseList" class="mt-4 space-y-4"></div>
+                    <div id="visibleTestcaseList" class="mt-4 space-y-4"></div>
+                </div>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <p class="text-xs font-black uppercase tracking-[0.22em] text-slate-500">Hidden Judge Testcases</p>
+                            <p class="text-sm text-slate-500 mt-1">Only the submit action evaluates these hidden cases.</p>
+                        </div>
+                        <button id="addHiddenTestcaseBtn" type="button" class="rounded-xl bg-slate-800 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white shadow-sm transition hover:bg-slate-900">+ Add Hidden</button>
+                    </div>
+                    <div id="hiddenTestcaseList" class="mt-4 space-y-4"></div>
                 </div>
                 <div class="flex justify-end space-x-3 mt-8">
                     <button type="button" onclick="closeQuestionModal()" class="px-6 py-2 text-gray-500 font-bold hover:bg-gray-100 rounded-xl">Cancel</button>
@@ -267,6 +277,39 @@
         </div>
     </div>
 
+    <div id="submissionDetailModal" class="fixed inset-0 hidden z-50 bg-[linear-gradient(180deg,_rgba(241,245,249,0.74),_rgba(226,238,255,0.82))] backdrop-blur-xl">
+        <div class="flex min-h-full items-center justify-center p-6">
+        <div class="bg-white p-8 rounded-[28px] shadow-[0_32px_90px_-46px_rgba(37,99,235,0.24)] w-full max-w-5xl border border-white/90 max-h-[90vh] flex flex-col overflow-hidden">
+            <div class="flex items-start justify-between gap-4 shrink-0">
+                <div>
+                    <h2 class="text-2xl font-black text-gray-800 tracking-tight">Submission Details</h2>
+                    <p id="submissionMeta" class="mt-2 text-sm text-slate-500">Student, verdict, testcase count, and latest code snapshot.</p>
+                </div>
+                <button type="button" onclick="closeSubmissionModal()" class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-500 transition hover:bg-slate-50">Close</button>
+            </div>
+            <div class="mt-6 grid flex-1 gap-6 overflow-hidden lg:grid-cols-[1.1fr_0.9fr]">
+                <div class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
+                    <div class="border-b border-slate-200 px-4 py-3">
+                        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Workspace Files</p>
+                    </div>
+                    <div id="submissionFileTabs" class="flex flex-wrap gap-2 border-b border-slate-200 bg-white px-4 py-3"></div>
+                    <pre id="submissionCodeBlock" class="min-h-0 flex-1 overflow-auto bg-slate-950 p-4 text-sm leading-6 text-slate-100"></pre>
+                </div>
+                <div class="flex min-h-0 flex-col gap-4 overflow-hidden">
+                    <div class="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Summary</p>
+                        <div id="submissionSummary" class="mt-3 grid gap-3 text-sm text-slate-700"></div>
+                    </div>
+                    <div class="min-h-0 flex-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Program Output</p>
+                        <pre id="submissionOutputBlock" class="mt-3 min-h-0 overflow-auto whitespace-pre-wrap break-words bg-slate-50 p-4 text-sm leading-6 text-slate-700"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </div>
+    </div>
+
     <script>
         const token = localStorage.getItem('vortex_token');
         let currentRoomId = null;
@@ -274,6 +317,9 @@
         let editingQuestionId = null;
         let roomRefreshInFlight = false;
         const roomQuestionBank = new Map();
+        const teacherSubmissionLookup = new Map();
+        let activeSubmissionFiles = [];
+        let activeSubmissionFilePath = null;
 
         document.getElementById('logoutBtn').onclick = () => { localStorage.clear(); window.location.href = '/login/'; };
 
@@ -367,17 +413,17 @@
             }));
         }
 
-        function renderQuestionTestcases(testcases = null) {
-            const testcaseList = document.getElementById('questionTestcaseList');
+        function renderQuestionTestcases(listId, testcases = null, mode = 'hidden') {
+            const testcaseList = document.getElementById(listId);
             const normalized = normalizeQuestionTestcases(testcases);
             testcaseList.innerHTML = normalized.map((testcase, index) => `
                 <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div class="flex items-center justify-between gap-3">
                         <div>
                             <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-400">Testcase ${index + 1}</p>
-                            <p class="text-xs text-slate-500 mt-1">Input stays private from students. Only the judge uses it.</p>
+                            <p class="text-xs text-slate-500 mt-1">${mode === 'visible' ? 'Students can run this testcase directly from the problem panel.' : 'This testcase is hidden from students and is used only by submit.'}</p>
                         </div>
-                        <button type="button" data-remove-testcase="${index}" class="rounded-xl border border-rose-200 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-50 ${normalized.length === 1 ? 'opacity-40 cursor-not-allowed' : ''}" ${normalized.length === 1 ? 'disabled' : ''}>
+                        <button type="button" data-list-id="${listId}" data-remove-testcase="${index}" class="rounded-xl border border-rose-200 px-3 py-2 text-xs font-black uppercase tracking-[0.16em] text-rose-600 transition hover:bg-rose-50 ${normalized.length === 1 ? 'opacity-40 cursor-not-allowed' : ''}" ${normalized.length === 1 ? 'disabled' : ''}>
                             Remove
                         </button>
                     </div>
@@ -395,8 +441,8 @@
             `).join('');
         }
 
-        function collectQuestionTestcases() {
-            return Array.from(document.querySelectorAll('#questionTestcaseList > div')).map((card) => ({
+        function collectQuestionTestcases(listId) {
+            return Array.from(document.querySelectorAll(`#${listId} > div`)).map((card) => ({
                 input: card.querySelector('[data-field="input"]').value,
                 expected_output: card.querySelector('[data-field="output"]').value.trim(),
             }));
@@ -413,9 +459,10 @@
             editingQuestionId = null;
             document.getElementById('addQuestionForm').reset();
             document.getElementById('questionModalTitle').innerText = 'Add Question';
-            document.getElementById('questionModalHelper').innerText = 'Add one testcase card per judge case. You can add, remove, and edit them individually.';
+            document.getElementById('questionModalHelper').innerText = 'Create visible testcases for Run Test and hidden testcases for Submit.';
             document.getElementById('questionSubmitBtn').innerText = 'Save Question';
-            renderQuestionTestcases([{ input: '', expected_output: '' }]);
+            renderQuestionTestcases('visibleTestcaseList', [{ input: '', expected_output: '' }], 'visible');
+            renderQuestionTestcases('hiddenTestcaseList', [{ input: '', expected_output: '' }], 'hidden');
         }
 
         function closeQuestionModal() {
@@ -446,32 +493,40 @@
 
                 editingQuestionId = questionId;
                 document.getElementById('questionModalTitle').innerText = 'Edit Question';
-                document.getElementById('questionModalHelper').innerText = 'Update the statement, marks, and testcase cards for this question.';
+                document.getElementById('questionModalHelper').innerText = 'Update the statement, visible run cases, and hidden judge cases for this question.';
                 document.getElementById('questionSubmitBtn').innerText = 'Save Changes';
                 document.getElementById('qTitle').value = question.title || '';
                 document.getElementById('qMarks').value = question.total_marks || 10;
                 document.getElementById('qDesc').value = question.description || '';
-                renderQuestionTestcases(question.testcases);
+                renderQuestionTestcases('visibleTestcaseList', question.visible_testcases, 'visible');
+                renderQuestionTestcases('hiddenTestcaseList', question.testcases, 'hidden');
             }
 
             document.getElementById('addQuestionModal').classList.remove('hidden');
         }
 
-        document.getElementById('addTestcaseBtn').onclick = () => {
-            const testcases = collectQuestionTestcases();
+        document.getElementById('addVisibleTestcaseBtn').onclick = () => {
+            const testcases = collectQuestionTestcases('visibleTestcaseList');
             testcases.push({ input: '', expected_output: '' });
-            renderQuestionTestcases(testcases);
+            renderQuestionTestcases('visibleTestcaseList', testcases, 'visible');
         };
 
-        document.getElementById('questionTestcaseList').addEventListener('click', (event) => {
+        document.getElementById('addHiddenTestcaseBtn').onclick = () => {
+            const testcases = collectQuestionTestcases('hiddenTestcaseList');
+            testcases.push({ input: '', expected_output: '' });
+            renderQuestionTestcases('hiddenTestcaseList', testcases, 'hidden');
+        };
+
+        document.getElementById('addQuestionModal').addEventListener('click', (event) => {
             const removeBtn = event.target.closest('[data-remove-testcase]');
             if (!removeBtn) return;
 
+            const listId = removeBtn.getAttribute('data-list-id');
             const index = Number(removeBtn.getAttribute('data-remove-testcase'));
-            const testcases = collectQuestionTestcases();
+            const testcases = collectQuestionTestcases(listId);
             if (testcases.length <= 1) return;
             testcases.splice(index, 1);
-            renderQuestionTestcases(testcases);
+            renderQuestionTestcases(listId, testcases, listId === 'visibleTestcaseList' ? 'visible' : 'hidden');
         });
 
         function renderRoomDetails(room) {
@@ -764,7 +819,10 @@
                         <p class="text-xs text-gray-500 mt-2 line-clamp-2 text-left">${escapeHtml(q.description)}</p>
                         <div class="mt-4 pt-4 border-t border-gray-50 flex flex-col space-y-1 text-left">
                             <span class="text-[9px] font-black text-gray-400 uppercase">Testcases</span>
-                            <div class="inline-flex items-center self-start rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">${escapeHtml(q.testcase_count || 1)} Cases</div>
+                            <div class="flex flex-wrap gap-2">
+                                <div class="inline-flex items-center self-start rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-blue-700">${escapeHtml(q.visible_testcase_count || 0)} Visible</div>
+                                <div class="inline-flex items-center self-start rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-600">${escapeHtml(q.testcase_count || 1)} Hidden</div>
+                            </div>
                         </div>
                     </div>`;
                 });
@@ -781,23 +839,34 @@
             const title = document.getElementById('qTitle').value.trim();
             const description = document.getElementById('qDesc').value.trim();
             const marks = Number.parseInt(document.getElementById('qMarks').value, 10);
-            const testcases = collectQuestionTestcases().filter((testcase) => testcase.input.trim() || testcase.expected_output.trim());
+            const visibleTestcases = collectQuestionTestcases('visibleTestcaseList').filter((testcase) => testcase.input.trim() || testcase.expected_output.trim());
+            const hiddenTestcases = collectQuestionTestcases('hiddenTestcaseList').filter((testcase) => testcase.input.trim() || testcase.expected_output.trim());
 
             if (!title || !description || Number.isNaN(marks) || marks < 1) {
                 alert("Fill the title, description, testcase data, and a valid marks value.");
                 return;
             }
 
-            if (testcases.length === 0 || testcases.some((testcase) => !testcase.expected_output.trim())) {
-                alert("Each testcase needs an expected output.");
+            if (visibleTestcases.length === 0 || visibleTestcases.some((testcase) => !testcase.expected_output.trim())) {
+                alert("Each visible testcase needs an expected output.");
                 return;
             }
 
+            if (hiddenTestcases.length === 0 || hiddenTestcases.some((testcase) => !testcase.expected_output.trim())) {
+                alert("Each hidden testcase needs an expected output.");
+                return;
+            }
+
+            const visiblePayload = serializeQuestionTestcases(visibleTestcases);
+            const hiddenPayload = serializeQuestionTestcases(hiddenTestcases);
             const payload = {
                 title,
                 description,
                 total_marks: marks,
-                ...serializeQuestionTestcases(testcases),
+                visible_testcase_input: visiblePayload.testcase_input,
+                visible_expected_output: visiblePayload.expected_output,
+                testcase_input: hiddenPayload.testcase_input,
+                expected_output: hiddenPayload.expected_output,
             };
 
             const url = editingQuestionId
@@ -834,7 +903,7 @@
                 const students = await res.json();
                 if (Number(currentRoomId || 0) !== targetRoomId) return;
                 
-                document.getElementById('studentCount').innerText = students.length;
+                document.getElementById('studentCount').innerText = students.filter((student) => !student.access_locked).length;
                 
                 const tbody = document.getElementById('participantsTableBody');
                 tbody.innerHTML = '';
@@ -847,13 +916,19 @@
                 students.forEach(student => {
                     const studentId = student.id || student.user_id || student.student_id;
                     const studentName = student.username || student.student_name || 'Unknown';
+                    const isBlocked = Boolean(student.access_locked);
                     
                     tbody.innerHTML += `
                         <tr class="hover:bg-gray-50 transition border-b border-gray-50">
-                            <td class="px-4 py-3 font-bold text-gray-800">${escapeHtml(studentName)}</td>
+                            <td class="px-4 py-3">
+                                <div class="font-bold text-gray-800">${escapeHtml(studentName)}</div>
+                                <div class="mt-1 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${isBlocked ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-emerald-200 bg-emerald-50 text-emerald-600'}">
+                                    ${isBlocked ? 'Blocked' : 'Active'}
+                                </div>
+                            </td>
                             <td class="px-4 py-3 text-right">
-                                <button onclick="kickStudent(${studentId})" class="text-xs bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 px-3 py-1 rounded font-bold transition">
-                                    KICK
+                                <button onclick="toggleParticipantLock(${studentId}, ${isBlocked ? 'false' : 'true'})" class="text-xs ${isBlocked ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 hover:bg-red-600 border-red-200'} hover:text-white border px-3 py-1 rounded font-bold transition">
+                                    ${isBlocked ? 'UNBLOCK' : 'BLOCK'}
                                 </button>
                             </td>
                         </tr>
@@ -863,28 +938,117 @@
             } catch (err) { console.error('fetchParticipants error', err); }
         }
 
-        async function kickStudent(studentId) {
+        async function toggleParticipantLock(studentId, shouldLock) {
             if (!studentId) {
-                alert("Cannot kick student: ID missing from API response.");
+                alert("Cannot update student access: ID missing from API response.");
                 return;
             }
-            if (!confirm("Are you sure you want to kick this student from the room? Their submissions will be removed.")) return;
+            const actionLabel = shouldLock ? 'block' : 'unblock';
+            if (!confirm(`Are you sure you want to ${actionLabel} this student for the room?`)) return;
             
             try {
                 const res = await fetch(`/api/rooms/${currentRoomId}/participants/${studentId}/`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Token ${token}` }
+                    method: shouldLock ? 'DELETE' : 'PATCH',
+                    headers: {
+                        'Authorization': `Token ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: shouldLock ? null : JSON.stringify({ access_locked: false }),
                 });
                 
                 if (res.ok) {
                     refreshRoomData(currentRoomId);
                 } else {
-                    alert("Failed to kick student. Check your backend endpoints.");
+                    alert(`Failed to ${actionLabel} student.`);
                 }
             } catch (err) {
-                console.error("Kick student error", err);
+                console.error("Participant access update error", err);
             }
         }
+
+        function getDefaultSubmissionFile(language) {
+            switch ((language || '').toLowerCase()) {
+                case 'python': return 'main.py';
+                case 'javascript': return 'main.js';
+                case 'ruby': return 'main.rb';
+                case 'php': return 'main.php';
+                case 'cpp': return 'main.cpp';
+                case 'c': return 'main.c';
+                case 'go': return 'main.go';
+                case 'rust': return 'main.rs';
+                case 'java': return 'Main.java';
+                case 'typescript': return 'main.ts';
+                case 'sql': return 'query.sql';
+                default: return 'main.txt';
+            }
+        }
+
+        function normalizeSubmissionFiles(submission) {
+            if (Array.isArray(submission.files) && submission.files.length > 0) {
+                return submission.files.map((file) => ({
+                    path: file.path || file.name || submission.entry_file || getDefaultSubmissionFile(submission.language),
+                    content: file.content || '',
+                }));
+            }
+
+            return [{
+                path: submission.entry_file || getDefaultSubmissionFile(submission.language),
+                content: submission.code || '',
+            }];
+        }
+
+        function renderSubmissionCodeFile(path) {
+            activeSubmissionFilePath = path;
+            const selectedFile = activeSubmissionFiles.find((file) => file.path === path) || activeSubmissionFiles[0] || { content: '' };
+            document.getElementById('submissionCodeBlock').textContent = selectedFile.content || '';
+
+            document.getElementById('submissionFileTabs').innerHTML = activeSubmissionFiles.map((file) => `
+                <button type="button" data-submission-file="${escapeHtml(file.path)}" class="rounded-xl border px-3 py-2 text-xs font-black ${file.path === activeSubmissionFilePath ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}">
+                    ${escapeHtml(file.path)}
+                </button>
+            `).join('');
+
+            document.querySelectorAll('[data-submission-file]').forEach((button) => {
+                button.onclick = () => renderSubmissionCodeFile(button.getAttribute('data-submission-file'));
+            });
+        }
+
+        function closeSubmissionModal() {
+            document.getElementById('submissionDetailModal').classList.add('hidden');
+            activeSubmissionFiles = [];
+            activeSubmissionFilePath = null;
+        }
+
+        window.closeSubmissionModal = closeSubmissionModal;
+        window.renderSubmissionCodeFile = renderSubmissionCodeFile;
+
+        function openSubmissionModal(submissionId) {
+            const submission = teacherSubmissionLookup.get(Number(submissionId));
+            if (!submission) {
+                alert('Submission details are not available yet. Refresh the room and try again.');
+                return;
+            }
+
+            activeSubmissionFiles = normalizeSubmissionFiles(submission);
+            activeSubmissionFilePath = activeSubmissionFiles[0]?.path || null;
+
+            document.getElementById('submissionMeta').innerText = `${submission.student_name || 'Student'} • ${submission.question_title || 'Practice'} • ${submission.language || 'code'}`;
+            document.getElementById('submissionSummary').innerHTML = `
+                <div><span class="font-black text-slate-900">Student:</span> ${escapeHtml(submission.student_name || 'Unknown')}</div>
+                <div><span class="font-black text-slate-900">Question:</span> ${escapeHtml(submission.question_title || 'Practice')}</div>
+                <div><span class="font-black text-slate-900">Verdict:</span> ${escapeHtml(submission.status || 'PENDING')}</div>
+                <div><span class="font-black text-slate-900">Language:</span> ${escapeHtml(submission.language || '-')}</div>
+                <div><span class="font-black text-slate-900">Execution Time:</span> ${escapeHtml(submission.execution_time_ms ?? '-')} ms</div>
+                <div><span class="font-black text-slate-900">Testcases:</span> ${escapeHtml(submission.passed_testcases ?? 0)}/${escapeHtml(submission.total_testcases ?? 0)}</div>
+                <div><span class="font-black text-slate-900">Marks:</span> ${escapeHtml(submission.total_score ?? 0)}</div>
+                <div><span class="font-black text-slate-900">Submitted:</span> ${escapeHtml(submission.submitted_at ? new Date(submission.submitted_at).toLocaleString() : '-')}</div>
+            `;
+            document.getElementById('submissionOutputBlock').textContent = submission.output || 'No output';
+            renderSubmissionCodeFile(activeSubmissionFilePath);
+            document.getElementById('submissionDetailModal').classList.remove('hidden');
+        }
+
+        window.openSubmissionModal = openSubmissionModal;
 
         // --- AGGREGATED SUBMISSION LEADERBOARD ---
         async function fetchSubmissions(roomId) {
@@ -899,6 +1063,7 @@
                 if (Number(currentRoomId || 0) !== targetRoomId) return;
                 const tbody = document.getElementById('submissionTableBody');
                 tbody.innerHTML = '';
+                teacherSubmissionLookup.clear();
 
                 if (!submissions || submissions.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-10 text-center text-gray-400 italic">No activity to display.</td></tr>';
@@ -908,6 +1073,7 @@
                 const studentStats = {};
 
                 submissions.forEach(sub => {
+                    teacherSubmissionLookup.set(Number(sub.id), sub);
                     const name = sub.student_name || sub.username || (sub.user && sub.user.username) || 'Unknown Student';
                     const studentKey = String(sub.student_id || name);
                     const questionId = Number(sub.question_id || sub.question || 0) || null;
@@ -919,7 +1085,8 @@
                             solvedQuestions: new Set(),
                             questionScores: new Map(),
                             latestTime: 0,
-                            latestStatus: 'PENDING'
+                            latestStatus: 'PENDING',
+                            latestSubmission: null,
                         };
                     }
 
@@ -936,6 +1103,7 @@
                     if (subTime > studentStats[studentKey].latestTime) {
                         studentStats[studentKey].latestTime = subTime;
                         studentStats[studentKey].latestStatus = statusRaw;
+                        studentStats[studentKey].latestSubmission = sub;
                     }
                 });
 
@@ -963,6 +1131,11 @@
                             <td class="px-6 py-4 font-black ${colorClass} text-[10px] uppercase tracking-widest">
                                 ${escapeHtml(student.latestStatus)} <br>
                                 <span class="text-gray-400 font-mono text-[9px] font-normal lowercase">${timeString}</span>
+                                ${student.latestSubmission ? `
+                                <button onclick="openSubmissionModal(${student.latestSubmission.id})" class="mt-2 inline-flex rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-50">
+                                    View Code
+                                </button>
+                                ` : ''}
                             </td>
                         </tr>
                     `;
