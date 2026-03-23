@@ -36,9 +36,10 @@ class KafkaManager:
 
 class DynamicQueueThrottle(UserRateThrottle):
     def allow_request(self, request, view):
-        # FIX: Only throttle POST requests (Submissions).
-        # This ensures GET requests (fetching results) are NEVER blocked.
-        if request.method != 'POST':
+        # Only throttle the submission endpoint.
+        # Other POST actions such as room/question management should never be
+        # blocked by queue depth or Redis throttling.
+        if request.method != 'POST' or not request.path.rstrip('/').endswith('/api/submissions/submit'):
             return True
 
         if request.user and request.user.is_staff:
@@ -76,8 +77,12 @@ class DynamicQueueThrottle(UserRateThrottle):
 
         except Exception as e:
             logger.error(f"Kafka Throttle Error: {e}")
-            # Fallback to standard throttling if Kafka is unreachable
-            pass
+            # Fall through to the standard DRF throttle below only if the cache
+            # backend is healthy. If Redis is also unavailable, fail open.
 
         # If queue is busy, enforce the 'user' limit defined in settings.py
-        return super().allow_request(request, view)
+        try:
+            return super().allow_request(request, view)
+        except Exception as e:
+            logger.error(f"Throttle Cache Error: {e}")
+            return True
