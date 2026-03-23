@@ -22,7 +22,7 @@ x-executor-common: &executor-common
 
 services:
   db:
-    image: postgres:13
+    image: postgres:16
     container_name: vortex-postgres
     environment:
       POSTGRES_DB: judge_vortex_db
@@ -31,7 +31,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres16_data:/var/lib/postgresql/data
     networks:
       - vortex-net
 
@@ -116,7 +116,7 @@ services:
       - vortex-net
 
 volumes:
-  postgres_data:
+  postgres16_data:
 
 networks:
   vortex-net:

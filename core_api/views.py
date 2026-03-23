@@ -29,7 +29,6 @@ from .serializers import *
 from .throttles import DynamicQueueThrottle
 from .judging import (
     build_hidden_testcases,
-    build_visible_testcases,
     get_hidden_testcase_count,
     normalize_judge_output,
 )
