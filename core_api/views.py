@@ -724,7 +724,7 @@ def join_room_view(request):
     except ExamRoom.DoesNotExist:
         return Response({'error': 'Invalid or inactive room code.'}, status=status.HTTP_404_NOT_FOUND)
 
-    # 🟢 Allow resuming the exam if they reload the page
+    # Allow resuming the exam if they reload the page
     participant = RoomParticipant.objects.filter(room=room, student=request.user).first()
     if participant:
         if participant.access_locked:
@@ -803,7 +803,7 @@ class SubmissionCreateView(generics.CreateAPIView):
                 "error": "Invalid room or question identifier."
             })
 
-        # 🟢 Distinguish between "Run Test" and "Final Submit"
+        # Distinguish between "Run Test" and "Final Submit"
         if question_id:
             question = get_object_or_404(ExamQuestion, id=question_id)
             if room_id is None:
@@ -860,7 +860,7 @@ class SubmissionCreateView(generics.CreateAPIView):
             if participant and is_auto_disqualification:
                 lock_participant_access(participant)
         
-        # 📨 Push to Kafka for Native Execution
+        # Push to Kafka for Native Execution
         producer = get_kafka_producer()
         
         message = {
