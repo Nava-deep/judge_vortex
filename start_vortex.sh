@@ -4,6 +4,13 @@ echo "--------------------------------------------------------"
 echo "IGNITING JUDGE VORTEX (DOCKER ISOLATE ENGINE)..."
 echo "--------------------------------------------------------"
 
+echo "Checking Python dependencies..."
+if ! python3 -c "import django, channels, psycopg" >/dev/null 2>&1; then
+  echo "Syncing Python packages from requirements.txt..."
+  python3 -m pip install --user -r requirements.txt
+  echo
+fi
+
 # 1. CLEANUP ORPHANS
 echo "Cleaning up local processes..."
 pkill -f "executor_service/main.py" 2>/dev/null
