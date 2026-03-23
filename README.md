@@ -2,268 +2,239 @@
 
 <div align="center">
 
-**A proctored online coding exam platform with async judging, teacher controls, and a multi-file exam workspace.**
+**A proctored online coding examination platform built for real-time contest flow, teacher control, and asynchronous code judging.**
 
 [![Django](https://img.shields.io/badge/Django-5.2-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Default-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Docker](https://img.shields.io/badge/Docker-Stack-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Kafka](https://img.shields.io/badge/Kafka-Queue-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
+[![Kafka](https://img.shields.io/badge/Kafka-Async%20Judge-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
 [![Redis](https://img.shields.io/badge/Redis-Realtime-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-Infrastructure-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
 [![Judge](https://img.shields.io/badge/Judge-isolate%20ready-111827?style=for-the-badge)](./executor_service/sandbox.py)
 
 </div>
 
 ---
 
-## Overview
+## What It Is
 
-Judge Vortex is built for **supervised coding exams**.
+Judge Vortex is an **online judge designed for supervised coding exams**.
 
-- Teachers can create timed exam rooms, add question pools, edit schedules, block or unblock students, inspect submissions, and monitor room activity.
-- Students can join via room code, enter a fullscreen exam flow, solve assigned questions, work across multiple files, run visible testcases, and submit against hidden judge testcases.
-- The judge pipeline is asynchronous and separated from the web app using Kafka-backed executor workers.
+It combines:
 
-## Why This Project Stands Out
+- a **teacher dashboard** for room management, scheduling, question control, participant monitoring, and submission review
+- a **student exam workspace** with fullscreen-gated exam mode, multi-file editing, visible testcase execution, and hidden testcase submission
+- an **asynchronous judge pipeline** that separates the web app from code execution
 
-| Feature | What it does |
+The product is aimed at the gap between a normal coding playground and a real exam system: timed rooms, invigilation-oriented constraints, teacher moderation, and contest-style submission flow.
+
+## The Core Idea
+
+Most coding platforms do one of these well:
+
+- online practice
+- timed contests
+- classroom management
+
+Judge Vortex is built to bring those together in one system:
+
+- **teachers** create structured exam rooms
+- **students** receive assigned questions inside a restricted workspace
+- **submissions** move through a queue-backed judging pipeline
+- **results** flow back into the exam and dashboard in real time
+
+## Key Capabilities
+
+### Teacher Experience
+
+- Create and manage timed exam rooms
+- Set room schedules and question-pool counts
+- Add and edit coding questions
+- Configure both **visible** and **hidden** testcases
+- Block, unblock, or kick students from a room
+- Monitor participants and submissions from one dashboard
+- Inspect student code, outputs, testcase counts, language, and timestamps
+
+### Student Experience
+
+- Join exam rooms with a room code
+- Enter a fullscreen-controlled exam flow
+- Work inside a dedicated coding workspace
+- Create files, create folders, upload files, and import folder trees
+- Run **visible testcases** before submission
+- Submit against **hidden judge testcases**
+- Navigate question history and continue from saved workspace state
+
+### Judge Pipeline
+
+- Django receives and stores submissions
+- Kafka queues judging work asynchronously
+- Executor workers compile and run code outside the web request cycle
+- Hidden testcase results update the submission state and scoring
+- The platform supports a judge architecture that is compatible with Linux `isolate`
+
+## Why It Feels Different
+
+| Area | Judge Vortex approach |
 | --- | --- |
-| Proctored exam mode | Fullscreen-gated exam flow with lobby, timer, room join, kick/block handling, and rejoin restrictions. |
-| Multi-file editor | Students can create files, create folders, upload local files, import folder trees, and submit real project-style code. |
-| LeetCode-style test flow | `Run Test` uses visible testcases, while `Submit` evaluates hidden judge cases. |
-| Teacher operations | Room creation, schedule edits, participant control, question editing, testcase editing, and live submission inspection. |
-| Async judge engine | Django API publishes jobs, executor workers compile/run code, results flow back into the app. |
-| Social sign-in | Google and GitHub auth paths are wired alongside standard login/signup. |
+| Exam flow | Fullscreen-gated, timed, room-based exam flow instead of a generic playground |
+| Question solving | LeetCode-style split between visible testcase runs and hidden testcase submit |
+| Workspace | Multi-file exam editor instead of a single-textarea submission box |
+| Moderation | Teachers can actively monitor, block, unblock, and inspect participant activity |
+| Judging | Async queue-based architecture rather than direct in-request execution |
+| Realism | Built around actual exam friction: timing, room control, rejoin rules, and participant oversight |
 
-## Product Flow
+## Product Workflow
 
 ```mermaid
 flowchart LR
-    A["Teacher creates room"] --> B["Teacher adds question pool"]
+    A["Teacher creates exam room"] --> B["Teacher adds question pool"]
     B --> C["Student joins with room code"]
-    C --> D["Assigned questions appear in exam workspace"]
-    D --> E["Run Test uses visible testcases"]
-    D --> F["Submit sends hidden judge job"]
-    F --> G["Django stores submission"]
-    G --> H["Kafka queues judge task"]
-    H --> I["Executor worker compiles + runs code"]
-    I --> J["Verdict patched back to Django"]
-    J --> K["Teacher dashboard + student output update"]
+    C --> D["Exam workspace opens"]
+    D --> E["Run Test on visible cases"]
+    D --> F["Submit to hidden judge"]
+    F --> G["Submission saved in Django"]
+    G --> H["Kafka queues the job"]
+    H --> I["Executor worker compiles and runs code"]
+    I --> J["Verdict returns to platform"]
+    J --> K["Teacher dashboard and student view update"]
 ```
 
-## Stack
+## Exam UI Model
 
-### Application
+The student experience is intentionally structured more like a modern coding platform than a plain exam form.
+
+- question navigation on one side
+- problem statement panel
+- visible testcase section beneath the statement
+- editor and file tree workspace for writing solutions
+- contest-style output and submission history
+
+This gives the student a more natural solving flow while still keeping the room under exam restrictions.
+
+## Architecture
+
+### Web Layer
 
 - Django
 - Django REST Framework
 - Django Channels
-- Token authentication
-- Server-rendered templates with embedded client logic
+- server-rendered templates with embedded application logic
+
+### Data and Messaging
+
+- PostgreSQL as the primary database
+- Redis for realtime and support services
+- Kafka for submission queueing
+
+### Execution Layer
+
+- dedicated executor workers
+- compile/run pipeline separated from the main request path
+- Linux `isolate` compatible judge backend
 
 ### Infrastructure
 
-- PostgreSQL as the default database
-- Redis for realtime/cache support
-- Kafka for submission queueing
-- Docker Compose for local and Codespaces orchestration
-- Nginx, Prometheus, and Grafana in the infrastructure stack
+- Docker Compose orchestration
+- Nginx, Prometheus, and Grafana support in the stack
 
-### Judge Workers
+## Language Support
 
-- Core executor: `python`, `javascript`, `ruby`, `php`, `cpp`, `c`, `go`, `rust`, `typescript`, `sql`
-- Java executor: `java`
-- Codespaces defaults to the faster `native` backend
-- Full Linux deployment can use `isolate`
+Currently supported through the active executor setup:
 
-## Quick Start
+- `python`
+- `javascript`
+- `ruby`
+- `php`
+- `cpp`
+- `c`
+- `go`
+- `rust`
+- `typescript`
+- `sql`
+- `java`
 
-### Option 1: GitHub Codespaces
+## Security and Proctoring-Oriented Controls
 
-This is the fastest way to demo the project.
+Judge Vortex is designed with exam supervision in mind, including:
+
+- fullscreen entry requirements
+- timed lobby and deadline flow
+- teacher-controlled kicks and lockouts
+- room-based participation tracking
+- submission-to-room binding
+- restricted rejoin behavior after disqualification
+
+It is not positioned as a generic code sandbox first. It is positioned as an **exam system with a judge engine**.
+
+## Notable Product Features
 
 <details>
-<summary><strong>Open and run in Codespaces</strong></summary>
+<summary><strong>Multi-file exam workspace</strong></summary>
 
-#### 1. Create a Codespace
-
-- Open the repository on GitHub.
-- Click `Code`.
-- Open the `Codespaces` tab.
-- Click `Create codespace on main`.
-
-#### 2. Start the project
-
-```bash
-cd /workspaces/judge_vortex
-chmod +x start_codespaces.sh start_vortex.sh stop_vortex.sh
-./start_codespaces.sh
-```
-
-#### 3. Open the app
-
-- Open forwarded port `53562`
-- Use the forwarded GitHub URL
-- If you want to share it, set port `53562` to `Public`
-
-#### 4. Stop the stack
-
-```bash
-cd /workspaces/judge_vortex
-./stop_vortex.sh
-```
-
-#### Codespaces profile
-
-- core executor replicas: `1`
-- java executor replicas: `1`
-- backend: `native`
-- max concurrency: `4`
+Students can work with more than one file inside the exam workspace, create folders, import local project files, and submit a structured workspace instead of a single code blob.
 
 </details>
 
-### Option 2: Local Docker Run
-
 <details>
-<summary><strong>Start locally with Docker</strong></summary>
+<summary><strong>Visible vs hidden testcase model</strong></summary>
 
-#### Prerequisites
-
-- Python 3
-- Docker
-- Docker Compose plugin
-
-#### Start
-
-```bash
-cd judge_vortex
-./start_vortex.sh
-```
-
-#### Stop
-
-```bash
-cd judge_vortex
-./stop_vortex.sh
-```
-
-#### Default local URLs
-
-- App: `http://127.0.0.1:53562`
-- Grafana: `http://localhost:3000`
-- Prometheus: `http://localhost:9090`
+Visible testcases are intended for guided iteration, while hidden testcases preserve actual evaluation integrity during submission.
 
 </details>
 
-## Database
+<details>
+<summary><strong>Teacher-side submission inspection</strong></summary>
 
-PostgreSQL is now the **default** Django database.
+Teachers can inspect not only verdicts, but also the student’s code, file structure, testcase counts, output, language choice, and submission timing.
 
-- Default DB container: `postgres:13`
-- Default DB name: `judge_vortex_db`
-- Default user: `vortex_admin`
-- Default host: `127.0.0.1`
-- SQLite still works only as an explicit fallback:
+</details>
 
-```bash
-DB_ENGINE=sqlite python3 manage.py check
-```
+<details>
+<summary><strong>Async judge design</strong></summary>
 
-## Environment Notes
+The request path remains lightweight because submissions are persisted first and then processed through executor workers, instead of blocking the web thread for code execution.
 
-### Social login
+</details>
 
-Google and GitHub login paths are implemented, but they require provider credentials before they are usable.
-
-```bash
-GOOGLE_CLIENT_ID=your_google_client_id
-GITHUB_CLIENT_ID=your_github_client_id
-GITHUB_CLIENT_SECRET=your_github_client_secret
-GITHUB_REDIRECT_BASE=https://your-host/login/
-```
-
-### Startup controls
-
-Useful flags:
-
-```bash
-FORCE_BUILD=1 ./start_vortex.sh
-MAKE_MIGRATIONS=1 ./start_vortex.sh
-EXECUTOR_BACKEND=isolate ./start_vortex.sh
-EXECUTOR_CORE_REPLICAS=2 EXECUTOR_JAVA_REPLICAS=1 ./start_vortex.sh
-```
-
-## Exam Experience
-
-### Student side
-
-- Room join with room code
-- Fullscreen gate before exam starts
-- Lobby countdown
-- Question list and problem viewer
-- Multi-file project workspace
-- Visible testcase runner
-- Hidden judge submit flow
-- History, output, and saved workspace restoration
-
-### Teacher side
-
-- Create and edit exam rooms
-- Edit timings and question pool size
-- Add visible and hidden testcases
-- Block, unblock, or kick participants
-- View submission code, files, output, testcase counts, and metadata
-
-## Repository Map
+## Repository Structure
 
 ```text
 judge_vortex/
-├── core_api/                 Django models, serializers, views, judging logic
-├── executor_service/         Judge workers and sandbox logic
-├── infrastructure/           Docker Compose, Nginx, Prometheus, Grafana
-├── templates/                App UI templates
-├── start_vortex.sh           Main local launcher
-├── start_codespaces.sh       Codespaces launcher
-└── manage.py                 Django entrypoint
+├── core_api/                 core models, APIs, serializers, judging logic
+├── executor_service/         executor workers and sandbox pipeline
+├── infrastructure/           docker, nginx, monitoring, service wiring
+├── templates/                student and teacher UI templates
+├── start_vortex.sh           main launcher
+├── start_codespaces.sh       codespaces launcher
+└── manage.py                 django entrypoint
 ```
 
-## Main Files To Know
+## Important Files
 
 - [core_api/views.py](./core_api/views.py)
 - [core_api/models.py](./core_api/models.py)
 - [core_api/serializers.py](./core_api/serializers.py)
+- [core_api/judging.py](./core_api/judging.py)
 - [executor_service/sandbox.py](./executor_service/sandbox.py)
 - [executor_service/grader.py](./executor_service/grader.py)
 - [templates/workspace.html](./templates/workspace.html)
 - [templates/teacher-dashboard.html](./templates/teacher-dashboard.html)
-- [infrastructure/docker-compose.yml](./infrastructure/docker-compose.yml)
 
-## Deployment Guidance
+## Current Direction
 
-For a quick demo:
+Judge Vortex is moving toward a stronger production-style exam architecture:
 
-- GitHub Codespaces works well
+- PostgreSQL-backed application state
+- queue-driven judging
+- Linux-compatible isolated execution
+- teacher moderation and student workspace realism
 
-For a Linux-hosted deployment:
-
-- use a VM-based target
-- keep PostgreSQL, Redis, Kafka, and executor workers together
-- use `isolate` only on a proper Linux environment
-
-## Status
-
-```text
-Current repo defaults:
-- PostgreSQL-backed Django
-- Docker-managed infra
-- core + java executors enabled
-- Codespaces-friendly startup flow
-- social auth hooks present
-```
+The project is intentionally evolving beyond a simple “compile and run code” site into a more complete **assessment platform**.
 
 ---
 
 <div align="center">
 
-Built for real exam flow, not just code execution.
+**Built as an online exam system first, and a judge second.**
 
 </div>
