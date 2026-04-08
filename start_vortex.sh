@@ -1,5 +1,12 @@
 #!/bin/bash
 
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
+fi
+
 echo "--------------------------------------------------------"
 echo "IGNITING JUDGE VORTEX (DOCKER ISOLATE ENGINE)..."
 echo "--------------------------------------------------------"
