@@ -13,6 +13,20 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from pathlib import Path
 
+
+def env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def env_list(name: str, default: list[str]) -> list[str]:
+    value = os.environ.get(name)
+    if not value:
+        return default
+    return [item.strip() for item in value.split(',') if item.strip()]
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,16 +35,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-zm5)shic(b-5l7zcb159v9@(3nc@z#40j4tslrs#f4p5=yzxj@'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-zm5)shic(b-5l7zcb159v9@(3nc@z#40j4tslrs#f4p5=yzxj@')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env_bool('DJANGO_DEBUG', True)
 
-ALLOWED_HOSTS = [
-    'localhost', 
-    '127.0.0.1', 
-    'host.docker.internal',
-]
+ALLOWED_HOSTS = env_list(
+    'DJANGO_ALLOWED_HOSTS',
+    [
+        'localhost',
+        '127.0.0.1',
+        'host.docker.internal',
+    ],
+)
 
 
 # Application definition
@@ -79,10 +96,14 @@ TEMPLATES = [
     },
 ]
 
+CACHE_URL = os.environ.get('REDIS_CACHE_URL', 'redis://127.0.0.1:6379/1')
+CHANNEL_LAYER_HOST = os.environ.get('CHANNEL_REDIS_HOST', '127.0.0.1')
+CHANNEL_LAYER_PORT = int(os.environ.get('CHANNEL_REDIS_PORT', '6379'))
+
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": "redis://127.0.0.1:6379/1",
+        "LOCATION": CACHE_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
         }
@@ -138,7 +159,7 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
+            "hosts": [(CHANNEL_LAYER_HOST, CHANNEL_LAYER_PORT)],
         },
     },
 }
@@ -178,6 +199,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

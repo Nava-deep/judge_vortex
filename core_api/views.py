@@ -4,13 +4,15 @@ import random
 import logging
 import re
 import secrets
+from urllib.parse import urlparse
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.text import slugify
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
-from rest_framework import permissions, status, generics
+from rest_framework import status, generics
+from rest_framework.exceptions import APIException
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
@@ -24,15 +26,33 @@ from rest_framework import serializers
 from django.views.decorators.csrf import csrf_exempt
 import requests
 
-from .models import *
-from .serializers import *
+from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, SocialAccount, Submission, UserProfile
+from .serializers import (
+    ExamEventSerializer,
+    ExamQuestionSerializer,
+    ExamRoomSerializer,
+    StudentExamQuestionSerializer,
+    SubmissionSerializer,
+)
 from .throttles import DynamicQueueThrottle
+from .audit import record_exam_event
+from .health import check_cache, check_database, check_tcp_dependency
+from .metrics import (
+    PARTICIPANT_LOCK_EVENTS_TOTAL,
+    READINESS_CHECK_TOTAL,
+    ROOM_JOINS_TOTAL,
+    SUBMISSIONS_QUEUED_TOTAL,
+    SUBMISSIONS_RECEIVED_TOTAL,
+    SUBMISSION_END_TO_END_SECONDS,
+    SUBMISSION_VERDICTS_TOTAL,
+    WEBSOCKET_DELIVERIES_TOTAL,
+)
 from .judging import (
     build_hidden_testcases,
     get_hidden_testcase_count,
     normalize_judge_output,
 )
-from execution_routing import get_submission_topic
+from execution_routing import get_all_submission_topics, get_submission_topic
 
 logger = logging.getLogger(__name__)
 _kafka_producer = None
@@ -57,6 +77,47 @@ GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
 GITHUB_CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '').strip()
 GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '').strip()
 GITHUB_REDIRECT_BASE = os.getenv('GITHUB_REDIRECT_BASE', '').strip()
+
+
+class ServiceUnavailable(APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = 'Judge Vortex is temporarily unavailable.'
+    default_code = 'service_unavailable'
+
+
+def get_primary_kafka_dependency():
+    bootstrap = KAFKA_BOOTSTRAP_SERVERS[0] if KAFKA_BOOTSTRAP_SERVERS else '127.0.0.1:9092'
+    parsed = urlparse(f'//{bootstrap}')
+    return parsed.hostname or '127.0.0.1', parsed.port or 9092
+
+
+def emit_user_event(user_id, event_type, payload):
+    event_payload = {
+        'schema_version': 1,
+        'event_type': event_type,
+        **payload,
+    }
+    try:
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            f'user_{user_id}',
+            {
+                'type': 'send_submission_update',
+                'data': event_payload,
+            }
+        )
+        WEBSOCKET_DELIVERIES_TOTAL.labels(event=event_type, result='success').inc()
+    except Exception as ws_error:
+        WEBSOCKET_DELIVERIES_TOTAL.labels(event=event_type, result='failure').inc()
+        logger.error('websocket.delivery_failed %s', json.dumps({
+            'event_type': event_type,
+            'user_id': user_id,
+            'error': str(ws_error),
+        }, sort_keys=True))
+
+
+def log_submission_lifecycle(event_type, **payload):
+    logger.info('submission.lifecycle %s', json.dumps({'event_type': event_type, **payload}, sort_keys=True, default=str))
 
 
 def get_kafka_producer():
@@ -525,7 +586,19 @@ class ExamRoomListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         # Automatically set the creator to the logged-in teacher
-        serializer.save(teacher=self.request.user)
+        room = serializer.save(teacher=self.request.user)
+        record_exam_event(
+            event_type='room.created',
+            message=f'Room {room.room_code} created.',
+            room=room,
+            actor=self.request.user,
+            metadata={
+                'title': room.title,
+                'questions_to_assign': room.questions_to_assign,
+                'start_time': room.start_time.isoformat() if room.start_time else None,
+                'join_deadline': room.join_deadline.isoformat() if room.join_deadline else None,
+            },
+        )
 
 
 class ExamQuestionListCreateView(generics.ListCreateAPIView):
@@ -541,9 +614,83 @@ class ExamQuestionListCreateView(generics.ListCreateAPIView):
         room_id = self.kwargs['room_id']
         try:
             room = ExamRoom.objects.get(id=room_id, teacher=self.request.user)
-            serializer.save(room=room)
+            question = serializer.save(room=room)
+            record_exam_event(
+                event_type='question.created',
+                message=f'Question {question.title} added to room {room.room_code}.',
+                room=room,
+                question=question,
+                actor=self.request.user,
+                metadata={
+                    'total_marks': question.total_marks,
+                    'hidden_testcases': get_hidden_testcase_count(question.testcase_input, question.expected_output),
+                },
+            )
         except ExamRoom.DoesNotExist:
             raise serializers.ValidationError("Room not found or you don't have permission.")
+
+
+class RoomEventListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id):
+        room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
+        events = ExamEvent.objects.filter(room=room).select_related('actor', 'participant', 'submission', 'question')[:200]
+        serializer = ExamEventSerializer(events, many=True)
+        return Response(serializer.data)
+
+
+class LivenessView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        return Response({
+            'status': 'ok',
+            'service': 'judge-vortex-web',
+            'timestamp': timezone.now().isoformat(),
+        })
+
+
+class ReadinessView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        checks = {}
+        has_errors = False
+        kafka_host, kafka_port = get_primary_kafka_dependency()
+
+        for dependency, callback in (
+            ('database', check_database),
+            ('cache', check_cache),
+            ('kafka', lambda: check_tcp_dependency(kafka_host, kafka_port)),
+        ):
+            try:
+                checks[dependency] = callback()
+                READINESS_CHECK_TOTAL.labels(dependency=dependency, result='ok').inc()
+            except Exception as exc:
+                has_errors = True
+                READINESS_CHECK_TOTAL.labels(dependency=dependency, result='error').inc()
+                checks[dependency] = {
+                    'status': 'error',
+                    'error': str(exc),
+                }
+
+        checks['submission_topics'] = {
+            'status': 'ok',
+            'topics': get_all_submission_topics(),
+        }
+
+        return Response(
+            {
+                'status': 'degraded' if has_errors else 'ok',
+                'service': 'judge-vortex-web',
+                'timestamp': timezone.now().isoformat(),
+                'checks': checks,
+            },
+            status=status.HTTP_503_SERVICE_UNAVAILABLE if has_errors else status.HTTP_200_OK,
+        )
 
 
 class RoomParticipantListView(APIView):
@@ -600,16 +747,34 @@ class RoomQuestionDeleteView(APIView):
         question = get_object_or_404(ExamQuestion, id=q_id, room_id=room_id, room__teacher=request.user)
         serializer = ExamQuestionSerializer(question, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        updated_question = serializer.save()
+        record_exam_event(
+            event_type='question.updated',
+            message=f'Question {updated_question.title} updated.',
+            room=updated_question.room,
+            question=updated_question,
+            actor=request.user,
+            metadata={
+                'total_marks': updated_question.total_marks,
+                'hidden_testcases': get_hidden_testcase_count(updated_question.testcase_input, updated_question.expected_output),
+            },
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, room_id, q_id):
         question = get_object_or_404(ExamQuestion, id=q_id, room_id=room_id, room__teacher=request.user)
+        record_exam_event(
+            event_type='question.deleted',
+            message=f'Question {question.title} deleted.',
+            room=question.room,
+            question=question,
+            actor=request.user,
+        )
         question.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class RoomDetailView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
         room = get_object_or_404(ExamRoom, pk=pk, teacher=request.user)
@@ -620,12 +785,32 @@ class RoomDetailView(APIView):
         room = get_object_or_404(ExamRoom, pk=pk, teacher=request.user)
         serializer = ExamRoomSerializer(room, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        updated_room = serializer.save()
+        record_exam_event(
+            event_type='room.updated',
+            message=f'Room {updated_room.room_code} updated.',
+            room=updated_room,
+            actor=request.user,
+            metadata={
+                'title': updated_room.title,
+                'questions_to_assign': updated_room.questions_to_assign,
+                'start_time': updated_room.start_time.isoformat() if updated_room.start_time else None,
+                'join_deadline': updated_room.join_deadline.isoformat() if updated_room.join_deadline else None,
+            },
+        )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def delete(self, request, pk):
         # Security: Only the teacher who created the room can delete it
         room = get_object_or_404(ExamRoom, pk=pk, teacher=request.user)
+        record_exam_event(
+            event_type='room.deleted',
+            message=f'Room {room.room_code} deleted.',
+            room=room,
+            actor=request.user,
+            severity='warning',
+            metadata={'title': room.title},
+        )
         room.delete()
         return Response(
             {"message": "Exam Room and all related data deleted successfully."}, 
@@ -641,20 +826,20 @@ class RoomParticipantDeleteView(APIView):
         did_lock = lock_participant_access(participant)
 
         if did_lock:
-            try:
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    f'user_{student_id}',
-                    {
-                        'type': 'send_submission_update', 
-                        'data': {
-                            'action': 'KICKED',
-                            'room_id': room.id
-                        }
-                    }
-                )
-            except Exception as ws_error:
-                logger.error(f"WebSocket Kick Broadcast Failed: {ws_error}")
+            PARTICIPANT_LOCK_EVENTS_TOTAL.labels(source='teacher', action='lock').inc()
+            record_exam_event(
+                event_type='participant.locked',
+                message=f'{participant.student.username} was removed from room {room.room_code}.',
+                room=room,
+                actor=request.user,
+                participant=participant.student,
+                severity='warning',
+                metadata={'reason': 'teacher_kick'},
+            )
+            emit_user_event(student_id, 'participant.kicked', {
+                'action': 'KICKED',
+                'room_id': room.id,
+            })
 
         return Response({'message': 'Student blocked successfully.'}, status=status.HTTP_200_OK)
 
@@ -666,11 +851,30 @@ class RoomParticipantDeleteView(APIView):
 
         if should_lock:
             lock_participant_access(participant)
+            PARTICIPANT_LOCK_EVENTS_TOTAL.labels(source='teacher', action='lock').inc()
+            record_exam_event(
+                event_type='participant.locked',
+                message=f'{participant.student.username} was blocked in room {room.room_code}.',
+                room=room,
+                actor=request.user,
+                participant=participant.student,
+                severity='warning',
+                metadata={'reason': 'teacher_toggle'},
+            )
             return Response({'message': 'Student blocked successfully.'}, status=status.HTTP_200_OK)
 
         participant.access_locked = False
         participant.access_locked_at = None
         participant.save(update_fields=['access_locked', 'access_locked_at'])
+        PARTICIPANT_LOCK_EVENTS_TOTAL.labels(source='teacher', action='unlock').inc()
+        record_exam_event(
+            event_type='participant.unlocked',
+            message=f'{participant.student.username} was unblocked in room {room.room_code}.',
+            room=room,
+            actor=request.user,
+            participant=participant.student,
+            metadata={'reason': 'teacher_toggle'},
+        )
         return Response({'message': 'Student unblocked successfully.'}, status=status.HTTP_200_OK)
 
 
@@ -683,7 +887,17 @@ class StudentRoomLockView(APIView):
             room_id=room_id,
             student=request.user,
         )
-        lock_participant_access(participant)
+        if lock_participant_access(participant):
+            PARTICIPANT_LOCK_EVENTS_TOTAL.labels(source='student_client', action='lock').inc()
+            record_exam_event(
+                event_type='participant.locked',
+                message=f'{request.user.username} was locked out of room {participant.room.room_code}.',
+                room=participant.room,
+                actor=request.user,
+                participant=request.user,
+                severity='warning',
+                metadata={'reason': 'self_lock_endpoint'},
+            )
         return Response({'message': 'Exam room access locked.'}, status=status.HTTP_200_OK)
 
 
@@ -729,14 +943,24 @@ def join_room_view(request):
     try:
         room = ExamRoom.objects.get(room_code=room_code, is_active=True)
     except ExamRoom.DoesNotExist:
+        ROOM_JOINS_TOTAL.labels(result='invalid').inc()
         return Response({'error': 'Invalid or inactive room code.'}, status=status.HTTP_404_NOT_FOUND)
 
     # Allow resuming the exam if they reload the page
     participant = RoomParticipant.objects.filter(room=room, student=request.user).first()
     if participant:
         if participant.access_locked:
+            ROOM_JOINS_TOTAL.labels(result='locked').inc()
             return Response({'error': 'Your access to this exam room has been locked.'}, status=status.HTTP_403_FORBIDDEN)
         assigned_qs = participant.assigned_questions.all()
+        ROOM_JOINS_TOTAL.labels(result='resumed').inc()
+        record_exam_event(
+            event_type='participant.resumed',
+            message=f'{request.user.username} resumed room {room.room_code}.',
+            room=room,
+            actor=request.user,
+            participant=request.user,
+        )
         return Response({
             'message': 'Resumed room successfully!',
             'room_title': room.title,
@@ -750,6 +974,7 @@ def join_room_view(request):
 
     # Check the strict deadline!
     if timezone.now() > room.join_deadline:
+        ROOM_JOINS_TOTAL.labels(result='deadline_blocked').inc()
         return Response({'error': 'The deadline to join this exam has passed.'}, status=status.HTTP_403_FORBIDDEN)
 
     # Check if they are already in the room
@@ -766,6 +991,15 @@ def join_room_view(request):
     # Save the participant and their assigned questions
     participant = RoomParticipant.objects.create(room=room, student=request.user)
     participant.assigned_questions.set(assigned_qs)
+    ROOM_JOINS_TOTAL.labels(result='joined').inc()
+    record_exam_event(
+        event_type='participant.joined',
+        message=f'{request.user.username} joined room {room.room_code}.',
+        room=room,
+        actor=request.user,
+        participant=request.user,
+        metadata={'assigned_question_ids': [question.id for question in assigned_qs]},
+    )
 
     return Response({
         'message': 'Successfully joined room!',
@@ -851,6 +1085,7 @@ class SubmissionCreateView(generics.CreateAPIView):
             incoming_files,
             incoming_entry_file,
         )
+        submission_mode = 'hidden' if question_id else 'visible'
 
         # Save the submission to the DB
         with transaction.atomic():
@@ -866,12 +1101,52 @@ class SubmissionCreateView(generics.CreateAPIView):
             )
             if participant and is_auto_disqualification:
                 lock_participant_access(participant)
+                PARTICIPANT_LOCK_EVENTS_TOTAL.labels(source='auto_disqualify', action='lock').inc()
+                record_exam_event(
+                    event_type='participant.locked',
+                    message=f'{self.request.user.username} was auto-locked after leaving the exam context.',
+                    room=participant.room,
+                    actor=self.request.user,
+                    participant=self.request.user,
+                    severity='warning',
+                    metadata={'reason': 'auto_disqualify_submit'},
+                )
+
+        SUBMISSIONS_RECEIVED_TOTAL.labels(language=submission.language, mode=submission_mode).inc()
+        record_exam_event(
+            event_type='submission.received',
+            message=f'Submission {submission.id} received for {submission.language}.',
+            room=submission.room,
+            question=question,
+            submission=submission,
+            actor=self.request.user,
+            participant=self.request.user,
+            metadata={
+                'language': submission.language,
+                'mode': submission_mode,
+                'entry_file': submission.entry_file,
+                'workspace_file_count': len(submission.files or []),
+                'judge_case_count': len(judge_cases),
+            },
+        )
+        log_submission_lifecycle(
+            'submission.received',
+            submission_id=submission.id,
+            user_id=self.request.user.id,
+            room_id=submission.room_id,
+            question_id=submission.question_id,
+            language=submission.language,
+            mode=submission_mode,
+            entry_file=submission.entry_file,
+            judge_case_count=len(judge_cases),
+        )
         
         # Push to Kafka for Native Execution
         producer = get_kafka_producer()
         
         message = {
             'submission_id': submission.id,
+            'correlation_id': f'sub-{submission.id}',
             'code': submission.code,
             'files': submission.files,
             'entry_file': submission.entry_file,
@@ -888,8 +1163,51 @@ class SubmissionCreateView(generics.CreateAPIView):
             submission.delete()
             raise serializers.ValidationError({"error": str(exc)})
 
-        producer.send(submission_topic, message)
-        producer.flush()
+        try:
+            producer.send(submission_topic, message)
+            producer.flush()
+        except Exception as exc:
+            submission.status = 'SYSTEM_ERROR'
+            submission.output = 'Submission queue is temporarily unavailable.'
+            submission.save(update_fields=['status', 'output'])
+            record_exam_event(
+                event_type='submission.queue_failed',
+                message=f'Submission {submission.id} failed to enqueue.',
+                room=submission.room,
+                question=question,
+                submission=submission,
+                actor=self.request.user,
+                participant=self.request.user,
+                severity='error',
+                metadata={'topic': submission_topic, 'error': str(exc)},
+            )
+            log_submission_lifecycle(
+                'submission.queue_failed',
+                submission_id=submission.id,
+                language=submission.language,
+                topic=submission_topic,
+                error=str(exc),
+            )
+            raise ServiceUnavailable('Judging queue is temporarily unavailable. Please retry.')
+
+        SUBMISSIONS_QUEUED_TOTAL.labels(language=submission.language, topic=submission_topic).inc()
+        record_exam_event(
+            event_type='submission.queued',
+            message=f'Submission {submission.id} queued on {submission_topic}.',
+            room=submission.room,
+            question=question,
+            submission=submission,
+            actor=self.request.user,
+            participant=self.request.user,
+            metadata={'topic': submission_topic, 'mode': submission_mode},
+        )
+        log_submission_lifecycle(
+            'submission.queued',
+            submission_id=submission.id,
+            language=submission.language,
+            topic=submission_topic,
+            mode=submission_mode,
+        )
 
 class SubmissionUpdateView(APIView):
     permission_classes = [] 
@@ -966,29 +1284,59 @@ class SubmissionUpdateView(APIView):
             submission.total_testcases = total_testcases
             submission.execution_time_ms = request.data.get('execution_time_ms', submission.execution_time_ms)
             submission.save()
+            SUBMISSION_VERDICTS_TOTAL.labels(language=submission.language, status=submission.status).inc()
+            if submission.submitted_at:
+                latency_seconds = max((timezone.now() - submission.submitted_at).total_seconds(), 0.0)
+                SUBMISSION_END_TO_END_SECONDS.labels(language=submission.language, status=submission.status).observe(latency_seconds)
+
+            severity = 'info'
+            if submission.status in {'WRONG_ANSWER', 'TLE', 'MLE', 'RUNTIME_ERROR'}:
+                severity = 'warning'
+            if submission.status in {'COMPILATION_ERROR', 'SYSTEM_ERROR'}:
+                severity = 'error'
+
+            record_exam_event(
+                event_type='submission.updated',
+                message=f'Submission {submission.id} finished with {submission.status}.',
+                room=submission.room,
+                question=submission.question,
+                submission=submission,
+                actor=submission.user,
+                participant=submission.user,
+                severity=severity,
+                metadata={
+                    'executor_status': executor_status,
+                    'awarded_marks': submission.awarded_marks,
+                    'passed_testcases': submission.passed_testcases,
+                    'total_testcases': submission.total_testcases,
+                    'execution_time_ms': submission.execution_time_ms,
+                },
+            )
+            log_submission_lifecycle(
+                'submission.updated',
+                submission_id=submission.id,
+                room_id=submission.room_id,
+                question_id=submission.question_id,
+                language=submission.language,
+                executor_status=executor_status,
+                final_status=submission.status,
+                execution_time_ms=submission.execution_time_ms,
+                passed_testcases=submission.passed_testcases,
+                total_testcases=submission.total_testcases,
+            )
 
             # Broadcast to WebSockets
-            try:
-                channel_layer = get_channel_layer()
-                async_to_sync(channel_layer.group_send)(
-                    f'user_{submission.user.id}',
-                    {
-                        'type': 'send_submission_update',
-                        'data': {
-                            'submission_id': submission.id,
-                            'room_id': submission.room_id,
-                            'question_id': submission.question_id,
-                            'status': submission.status, 
-                            'output': submission.output,
-                            'execution_time': submission.execution_time_ms,
-                            'awarded_marks': submission.awarded_marks,
-                            'passed_testcases': submission.passed_testcases,
-                            'total_testcases': submission.total_testcases
-                        }
-                    }
-                )
-            except Exception as ws_error:
-                logger.error(f"WebSocket Broadcast Failed: {ws_error}")
+            emit_user_event(submission.user.id, 'submission.update', {
+                'submission_id': submission.id,
+                'room_id': submission.room_id,
+                'question_id': submission.question_id,
+                'status': submission.status,
+                'output': submission.output,
+                'execution_time': submission.execution_time_ms,
+                'awarded_marks': submission.awarded_marks,
+                'passed_testcases': submission.passed_testcases,
+                'total_testcases': submission.total_testcases,
+            })
 
             return Response({"message": "Updated successfully"}, status=status.HTTP_200_OK)
 

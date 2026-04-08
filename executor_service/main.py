@@ -7,7 +7,15 @@ from kafka import KafkaConsumer
 from kafka.errors import NoBrokersAvailable
 from kafka.structs import OffsetAndMetadata
 from grader import grade_submission, update_submission
-from prometheus_client import start_http_server, Counter
+from prometheus_client import start_http_server
+from observability import (
+    EXECUTOR_FAILURES_TOTAL,
+    EXECUTOR_INFLIGHT,
+    EXECUTOR_PROCESSING_SECONDS,
+    EXECUTOR_SUBMISSIONS_TOTAL,
+    EXECUTOR_VERDICTS_TOTAL,
+    log_executor_event,
+)
 
 # --- CONFIGURATION ---
 KAFKA_SUBMISSIONS_TOPIC = os.getenv("KAFKA_SUBMISSIONS_TOPIC", "code_submissions")
@@ -21,9 +29,6 @@ SUPPORTED_LANGUAGES = {
     for language in os.getenv("EXECUTOR_SUPPORTED_LANGUAGES", "").split(",")
     if language.strip()
 }
-
-# Define our Prometheus metric
-SUBMISSIONS_TOTAL = Counter('vortex_submissions_total', 'Total code executions')
 
 # The Semaphore acts as our 'Worker Pool' bouncer
 gatekeeper = asyncio.Semaphore(MAX_CONCURRENT_EXECUTIONS)
@@ -87,13 +92,13 @@ def get_kafka_consumer():
                 enable_auto_commit=False,
                 max_poll_records=MAX_CONCURRENT_EXECUTIONS,
             )
-            print("Successfully connected to Kafka!")
+            log_executor_event('executor.kafka.connected', executor=EXECUTOR_NAME, topic=KAFKA_SUBMISSIONS_TOPIC, bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
             return consumer
         except NoBrokersAvailable:
-            print("Kafka brokers not available yet... retrying in 2 seconds")
+            log_executor_event('executor.kafka.waiting', executor=EXECUTOR_NAME, topic=KAFKA_SUBMISSIONS_TOPIC, retry_in_seconds=2)
             time.sleep(2)
         except Exception as e:
-            print(f"Unexpected error connecting to Kafka: {e}")
+            log_executor_event('executor.kafka.error', executor=EXECUTOR_NAME, topic=KAFKA_SUBMISSIONS_TOPIC, error=str(e))
             time.sleep(5)
 
 async def run_grade_task(submission_data, topic_partition, message_offset, commit_tracker):
@@ -102,10 +107,20 @@ async def run_grade_task(submission_data, topic_partition, message_offset, commi
     the Kafka offset only after the result has been persisted back to Django.
     """
     async with gatekeeper:
-        SUBMISSIONS_TOTAL.inc()
         sub_id = submission_data.get('submission_id', 'Unknown')
         language = str(submission_data.get('language', '')).strip().lower()
-        print(f"Processing ID: {sub_id} (Slot Acquired)")
+        EXECUTOR_SUBMISSIONS_TOTAL.labels(executor=EXECUTOR_NAME, language=language or 'unknown').inc()
+        EXECUTOR_INFLIGHT.labels(executor=EXECUTOR_NAME).inc()
+        started_at = time.perf_counter()
+        log_executor_event(
+            'executor.task.start',
+            executor=EXECUTOR_NAME,
+            submission_id=sub_id,
+            topic=topic_partition.topic,
+            partition=topic_partition.partition,
+            offset=message_offset,
+            language=language,
+        )
         
         try:
             if SUPPORTED_LANGUAGES and language not in SUPPORTED_LANGUAGES:
@@ -115,25 +130,32 @@ async def run_grade_task(submission_data, topic_partition, message_offset, commi
                     f"Executor route mismatch in {EXECUTOR_NAME}: unsupported language '{language}'.",
                     0,
                 )
+                EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language or 'unknown', status='SYSTEM_ERROR').inc()
                 await commit_tracker.mark_completed(topic_partition, message_offset)
-                print(f"Rejected ID: {sub_id} due to unsupported language route (Slot Released)")
+                log_executor_event('executor.task.rejected', executor=EXECUTOR_NAME, submission_id=sub_id, language=language, reason='unsupported_language_route')
                 return
 
             await grade_submission(submission_data)
             await commit_tracker.mark_completed(topic_partition, message_offset)
-            print(f"Finished processing ID: {sub_id} (Slot Released)")
+            log_executor_event('executor.task.finished', executor=EXECUTOR_NAME, submission_id=sub_id, language=language)
         except Exception as e:
-            print(f"Executor error while processing {sub_id}: {e}")
+            EXECUTOR_FAILURES_TOTAL.labels(executor=EXECUTOR_NAME, stage='grade').inc()
+            log_executor_event('executor.task.error', executor=EXECUTOR_NAME, submission_id=sub_id, language=language, error=str(e))
             try:
                 await update_submission(sub_id, "SYSTEM_ERROR", f"Executor error: {e}", 0)
+                EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language or 'unknown', status='SYSTEM_ERROR').inc()
                 await commit_tracker.mark_completed(topic_partition, message_offset)
             except Exception as update_error:
-                print(f"Failed to persist executor error for {sub_id}: {update_error}")
+                EXECUTOR_FAILURES_TOTAL.labels(executor=EXECUTOR_NAME, stage='callback').inc()
+                log_executor_event('executor.task.callback_failed', executor=EXECUTOR_NAME, submission_id=sub_id, language=language, error=str(update_error))
+        finally:
+            EXECUTOR_INFLIGHT.labels(executor=EXECUTOR_NAME).dec()
+            EXECUTOR_PROCESSING_SECONDS.labels(executor=EXECUTOR_NAME, language=language or 'unknown').observe(max(time.perf_counter() - started_at, 0.0))
 
 async def start_worker():
     # 1. Start the Prometheus metrics server
     start_http_server(EXECUTOR_PROMETHEUS_PORT)
-    print(f"Metrics exported at http://localhost:{EXECUTOR_PROMETHEUS_PORT}/metrics")
+    log_executor_event('executor.metrics.ready', executor=EXECUTOR_NAME, port=EXECUTOR_PROMETHEUS_PORT)
     
     # 2. Get the consumer using our retry logic
     # Note: KafkaConsumer is synchronous, so we run it in a loop
@@ -142,9 +164,12 @@ async def start_worker():
     active_tasks = set()
     is_paused = False
     
-    print(
-        f"{EXECUTOR_NAME} running for topic '{KAFKA_SUBMISSIONS_TOPIC}' "
-        f"(Concurrency Limit: {MAX_CONCURRENT_EXECUTIONS})"
+    log_executor_event(
+        'executor.ready',
+        executor=EXECUTOR_NAME,
+        topic=KAFKA_SUBMISSIONS_TOPIC,
+        concurrency=MAX_CONCURRENT_EXECUTIONS,
+        supported_languages=sorted(SUPPORTED_LANGUAGES),
     )
     
     # 3. Main processing loop
@@ -165,7 +190,14 @@ async def start_worker():
         for topic_partition, msg_list in messages.items():
             for message in msg_list:
                 submission_data = message.value
-                print(f"\n[RECEIVED] Submission ID: {submission_data.get('submission_id')}")
+                log_executor_event(
+                    'executor.message.received',
+                    executor=EXECUTOR_NAME,
+                    submission_id=submission_data.get('submission_id'),
+                    topic=topic_partition.topic,
+                    partition=topic_partition.partition,
+                    offset=message.offset,
+                )
                 
                 # Create a non-blocking task for this submission
                 # This goes into the background and waits for a Semaphore slot
@@ -187,4 +219,4 @@ if __name__ == '__main__':
     try:
         asyncio.run(start_worker())
     except KeyboardInterrupt:
-        print("\nExecutor shutting down...")
+        log_executor_event('executor.shutdown', executor=EXECUTOR_NAME)

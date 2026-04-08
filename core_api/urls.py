@@ -8,6 +8,7 @@ from .views import (
     github_social_login_view,
     join_room_view,
     RoomParticipantDeleteView,
+    RoomEventListView,
     RoomDetailView,
     RoomParticipantListView,
     StudentRoomLockView,
@@ -21,6 +22,8 @@ from .views import (
     SubmissionDeleteView,
     ExamRoomListCreateView,
     ExamQuestionListCreateView,
+    LivenessView,
+    ReadinessView,
 )
 
 urlpatterns = [
@@ -37,6 +40,7 @@ urlpatterns = [
     path('rooms/<int:room_id>/questions/', ExamQuestionListCreateView.as_view(), name='question-list-create'),
     path('rooms/<int:room_id>/participants/', RoomParticipantListView.as_view(), name='room-participants'),
     path('rooms/<int:room_id>/submissions/', RoomSubmissionsListView.as_view(), name='room-submissions'),
+    path('rooms/<int:room_id>/events/', RoomEventListView.as_view(), name='room-events'),
     path('rooms/<int:room_id>/questions/<int:q_id>/', RoomQuestionDeleteView.as_view(), name='delete-question'),
     path('rooms/<int:pk>/', RoomDetailView.as_view(), name='room-detail'),
     path('rooms/<int:room_id>/participants/<int:student_id>/', RoomParticipantDeleteView.as_view(), name='kick-student'),
@@ -52,4 +56,8 @@ urlpatterns = [
     
     # ⚙️ Internal: Executor Callback
     path('submissions/<int:pk>/update/', SubmissionUpdateView.as_view(), name='submission-update'),
+
+    # 🩺 Platform Health
+    path('health/live/', LivenessView.as_view(), name='health-live'),
+    path('health/ready/', ReadinessView.as_view(), name='health-ready'),
 ]

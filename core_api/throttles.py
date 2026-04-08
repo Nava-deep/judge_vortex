@@ -4,6 +4,7 @@ from rest_framework.throttling import UserRateThrottle
 from kafka import KafkaConsumer, TopicPartition
 from kafka.admin import KafkaAdminClient
 from execution_routing import get_topic_consumer_groups
+from .metrics import QUEUE_DEPTH_GAUGE
 
 logger = logging.getLogger(__name__)
 KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTRAP_SERVERS", "127.0.0.1:9092").split(",") if server.strip()]
@@ -70,6 +71,8 @@ class DynamicQueueThrottle(UserRateThrottle):
                         committed = 0
                     queue_depth += max(high_watermark - committed, 0)
 
+            QUEUE_DEPTH_GAUGE.set(queue_depth)
+
             # 🚀 PRODUCTION LOGIC:
             # If the queue is empty (depth <= 0), allow the request immediately.
             if queue_depth <= 0:
@@ -77,6 +80,7 @@ class DynamicQueueThrottle(UserRateThrottle):
 
         except Exception as e:
             logger.error(f"Kafka Throttle Error: {e}")
+            QUEUE_DEPTH_GAUGE.set(0)
             # Fall through to the standard DRF throttle below only if the cache
             # backend is healthy. If Redis is also unavailable, fail open.
 

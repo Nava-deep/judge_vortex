@@ -4,11 +4,13 @@ from unittest.mock import patch
 from django.contrib.auth.models import User
 from django.test import override_settings
 from django.utils import timezone
+from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from . import views as core_views
-from .models import ExamQuestion, ExamRoom, RoomParticipant, Submission
+from .judging import build_testcases
+from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, Submission
 from execution_routing import get_submission_topic
 
 
@@ -259,7 +261,7 @@ class StudentJoinRoomTests(APITestCase):
         teacher_token = Token.objects.create(user=self.teacher)
         self.client.credentials(HTTP_AUTHORIZATION=f'Token {teacher_token.key}')
         kick_response = self.client.delete(f'/api/rooms/{self.room.id}/participants/{self.student.id}/')
-        self.assertEqual(kick_response.status_code, 204)
+        self.assertEqual(kick_response.status_code, 200)
 
         participant = RoomParticipant.objects.get(room=self.room, student=self.student)
         self.assertTrue(participant.access_locked)
@@ -513,6 +515,33 @@ class SubmissionCreateHiddenCasesTests(APITestCase):
         self.assertEqual(topic, get_submission_topic('java'))
         self.assertEqual(payload['language'], 'java')
 
+    @patch('core_api.views.KafkaProducer')
+    def test_queue_failure_marks_submission_as_system_error_and_logs_event(self, kafka_producer_cls):
+        producer = kafka_producer_cls.return_value
+        producer.send.side_effect = RuntimeError('broker unavailable')
+
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'print(4)',
+                'language': 'python',
+                'room_id': self.room.id,
+                'question_id': self.question.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 503)
+        submission = Submission.objects.latest('id')
+        self.assertEqual(submission.status, 'SYSTEM_ERROR')
+        self.assertEqual(submission.output, 'Submission queue is temporarily unavailable.')
+        self.assertTrue(
+            ExamEvent.objects.filter(
+                event_type='submission.queue_failed',
+                submission=submission,
+            ).exists()
+        )
+
 
 @override_settings(
     CACHES={
@@ -569,3 +598,223 @@ class TeacherRoomSubmissionFeedTests(APITestCase):
         submission_row = response.data[0]
         self.assertEqual(submission_row['student_id'], self.student.id)
         self.assertEqual(submission_row['question_id'], self.question.id)
+
+
+@override_settings(
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'judge-vortex-tests',
+        }
+    },
+    REST_FRAMEWORK={
+        'DEFAULT_AUTHENTICATION_CLASSES': [
+            'rest_framework.authentication.TokenAuthentication',
+        ],
+        'DEFAULT_PERMISSION_CLASSES': [
+            'rest_framework.permissions.IsAuthenticated',
+        ],
+        'DEFAULT_THROTTLE_CLASSES': [],
+    },
+)
+class PlatformHealthTests(APITestCase):
+    def test_liveness_endpoint_returns_ok(self):
+        response = self.client.get('/api/health/live/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['status'], 'ok')
+        self.assertEqual(response.data['service'], 'judge-vortex-web')
+
+    @patch('core_api.views.check_tcp_dependency', return_value={'status': 'ok', 'host': '127.0.0.1', 'port': 9092})
+    def test_readiness_endpoint_reports_dependencies(self, _kafka_check):
+        response = self.client.get('/api/health/ready/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['status'], 'ok')
+        self.assertEqual(response.data['checks']['database']['status'], 'ok')
+        self.assertEqual(response.data['checks']['cache']['status'], 'ok')
+        self.assertEqual(response.data['checks']['kafka']['status'], 'ok')
+        self.assertIn('topics', response.data['checks']['submission_topics'])
+
+    @patch('core_api.views.check_tcp_dependency', side_effect=RuntimeError('kafka down'))
+    def test_readiness_endpoint_returns_503_when_dependency_is_down(self, _kafka_check):
+        response = self.client.get('/api/health/ready/')
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data['status'], 'degraded')
+        self.assertEqual(response.data['checks']['kafka']['status'], 'error')
+
+
+class SubmissionWorkspaceNormalizationTests(APITestCase):
+    def test_normalize_submission_files_creates_default_entry_file(self):
+        files, entry_file, code = core_views.normalize_submission_files('python', 'print(42)', None)
+
+        self.assertEqual(entry_file, 'main.py')
+        self.assertEqual(code, 'print(42)')
+        self.assertEqual(files[0]['path'], 'main.py')
+
+    def test_normalize_submission_files_respects_explicit_entry_file(self):
+        files, entry_file, code = core_views.normalize_submission_files(
+            'python',
+            'print(42)',
+            [
+                {'path': 'src/hello.py', 'content': 'def hi():\n    return 42'},
+                {'path': 'src/main.py', 'content': 'from hello import hi\nprint(hi())'},
+            ],
+            'src/main.py',
+        )
+
+        self.assertEqual(entry_file, 'src/main.py')
+        self.assertEqual(code, 'from hello import hi\nprint(hi())')
+        self.assertEqual(len(files), 2)
+
+    def test_normalize_submission_files_rejects_unsafe_paths(self):
+        with self.assertRaisesMessage(serializers.ValidationError, 'safe relative path'):
+            core_views.normalize_submission_files(
+                'python',
+                'print(42)',
+                [{'path': '../secrets.py', 'content': 'nope'}],
+            )
+
+    def test_build_testcases_splits_blank_line_delimited_cases(self):
+        testcases = build_testcases('1\n\n2', '1\n\n4')
+
+        self.assertEqual(len(testcases), 2)
+        self.assertEqual(testcases[0]['input'], '1')
+        self.assertEqual(testcases[1]['expected_output'], '4')
+
+
+@override_settings(
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'judge-vortex-tests',
+        }
+    },
+    REST_FRAMEWORK={
+        'DEFAULT_AUTHENTICATION_CLASSES': [
+            'rest_framework.authentication.TokenAuthentication',
+        ],
+        'DEFAULT_PERMISSION_CLASSES': [
+            'rest_framework.permissions.IsAuthenticated',
+        ],
+        'DEFAULT_THROTTLE_CLASSES': [],
+    },
+)
+class AuditTrailTests(APITestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username='audit-teacher', password='pass123')
+        self.student = User.objects.create_user(username='audit-student', password='pass123')
+        self.teacher_token = Token.objects.create(user=self.teacher)
+        self.student_token = Token.objects.create(user=self.student)
+
+    def test_room_creation_logs_audit_event(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.teacher_token.key}')
+        response = self.client.post(
+            '/api/rooms/',
+            {
+                'title': 'Audit Room',
+                'questions_to_assign': 1,
+                'join_deadline': (timezone.now() + timedelta(days=1)).isoformat(),
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        room = ExamRoom.objects.get(id=response.data['id'])
+        event = ExamEvent.objects.get(room=room, event_type='room.created')
+        self.assertEqual(event.actor, self.teacher)
+
+    def test_teacher_can_fetch_room_event_timeline(self):
+        room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Timeline Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=1),
+        )
+        ExamEvent.objects.create(
+            room=room,
+            actor=self.teacher,
+            participant=self.student,
+            event_type='participant.joined',
+            message='student joined',
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.teacher_token.key}')
+        response = self.client.get(f'/api/rooms/{room.id}/events/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['event_type'], 'participant.joined')
+
+    def test_student_cannot_fetch_teacher_room_event_timeline(self):
+        room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Private Timeline Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=1),
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
+        response = self.client.get(f'/api/rooms/{room.id}/events/')
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_unlock_logs_audit_event(self):
+        room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Unlock Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=1),
+        )
+        participant = RoomParticipant.objects.create(room=room, student=self.student, access_locked=True)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.teacher_token.key}')
+        response = self.client.patch(
+            f'/api/rooms/{room.id}/participants/{self.student.id}/',
+            {'access_locked': False},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        participant.refresh_from_db()
+        self.assertFalse(participant.access_locked)
+        self.assertTrue(
+            ExamEvent.objects.filter(room=room, participant=self.student, event_type='participant.unlocked').exists()
+        )
+
+    @patch('core_api.views.KafkaProducer')
+    def test_submission_creation_logs_received_and_queued_events(self, kafka_producer_cls):
+        room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Submit Audit Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=1),
+        )
+        question = ExamQuestion.objects.create(
+            room=room,
+            title='Audit Submit',
+            description='Return 42.',
+            testcase_input='42',
+            expected_output='42',
+            total_marks=10,
+        )
+        RoomParticipant.objects.create(room=room, student=self.student)
+        RoomParticipant.objects.get(room=room, student=self.student).assigned_questions.set([question])
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'print(42)',
+                'language': 'python',
+                'room_id': room.id,
+                'question_id': question.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        submission = Submission.objects.get(id=response.data['id'])
+        self.assertTrue(ExamEvent.objects.filter(submission=submission, event_type='submission.received').exists())
+        self.assertTrue(ExamEvent.objects.filter(submission=submission, event_type='submission.queued').exists())

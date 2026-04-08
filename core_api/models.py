@@ -146,3 +146,59 @@ class Submission(models.Model):
 
     def __str__(self):
         return f"Sub #{self.id} | {self.user.username} | {self.status}"
+
+
+class ExamEvent(models.Model):
+    SEVERITY_CHOICES = (
+        ('info', 'Info'),
+        ('warning', 'Warning'),
+        ('error', 'Error'),
+    )
+
+    room = models.ForeignKey(
+        ExamRoom,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='events',
+    )
+    question = models.ForeignKey(
+        ExamQuestion,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='events',
+    )
+    submission = models.ForeignKey(
+        Submission,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='events',
+    )
+    actor = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='acted_exam_events',
+    )
+    participant = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='participant_exam_events',
+    )
+    event_type = models.CharField(max_length=64, db_index=True)
+    severity = models.CharField(max_length=16, choices=SEVERITY_CHOICES, default='info')
+    message = models.CharField(max_length=255)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        room_label = self.room.room_code if self.room_id and self.room else 'no-room'
+        return f"{self.event_type} [{room_label}]"

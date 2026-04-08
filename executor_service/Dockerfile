@@ -37,6 +37,7 @@ COPY --from=isolate-builder /opt/isolate-root/ /
 RUN chmod 4755 /usr/local/bin/isolate
 
 COPY execution_routing.py /app/execution_routing.py
+COPY shared /app/shared
 COPY executor_service/requirements.txt /tmp/requirements.txt
 RUN python3 -m venv "${VIRTUAL_ENV}" \
     && pip install --no-cache-dir -r /tmp/requirements.txt

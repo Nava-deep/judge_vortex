@@ -1,28 +1,33 @@
 import logging
 import os
+import time
 import requests
 import asyncio
 from sandbox import run_code_in_sandbox, prepare_execution, execute_prepared
+from observability import EXECUTOR_CALLBACK_TOTAL, EXECUTOR_VERDICTS_TOTAL, log_executor_event
+from shared.judging import normalize_judge_output
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 CORE_API_URL = os.getenv("CORE_API_URL", "http://localhost:53562/api").rstrip("/")
-
-
-def normalize_judge_output(value):
-    if value is None:
-        return ""
-
-    normalized = str(value).replace('\r\n', '\n').replace('\r', '\n').strip()
-    return '\n'.join(line.rstrip() for line in normalized.split('\n'))
-
+EXECUTOR_NAME = os.getenv("EXECUTOR_NAME", "executor")
 def _patch_django(url, payload):
     """A helper function to run the blocking network request."""
-    try:
-        requests.patch(url, json=payload, timeout=5)
-    except Exception as e:
-        logger.error(f"Failed to update Django: {e}")
+    last_error = None
+    for attempt in range(1, 4):
+        try:
+            response = requests.patch(url, json=payload, timeout=5)
+            response.raise_for_status()
+            EXECUTOR_CALLBACK_TOTAL.labels(executor=EXECUTOR_NAME, result='success').inc()
+            return
+        except Exception as e:
+            last_error = e
+            EXECUTOR_CALLBACK_TOTAL.labels(executor=EXECUTOR_NAME, result='failure').inc()
+            logger.error(f"Failed to update Django (attempt {attempt}/3): {e}")
+            time.sleep(0.25 * attempt)
+
+    raise RuntimeError(f"Failed to update Django after retries: {last_error}")
 
 async def update_submission(submission_id, status, output, time_ms, passed_testcases=None, total_testcases=None):
     """Asynchronously pushes the result back to Django."""
@@ -34,6 +39,15 @@ async def update_submission(submission_id, status, output, time_ms, passed_testc
         payload["total_testcases"] = total_testcases
     # Don't block the main event loop while waiting for Django to reply
     await asyncio.to_thread(_patch_django, url, payload)
+    log_executor_event(
+        'executor.callback',
+        executor=EXECUTOR_NAME,
+        submission_id=submission_id,
+        status=status,
+        time_ms=time_ms,
+        passed_testcases=passed_testcases,
+        total_testcases=total_testcases,
+    )
 
 async def grade_submission(submission_data):
     """The main async grading pipeline."""
@@ -45,8 +59,17 @@ async def grade_submission(submission_data):
     judge_cases = submission_data.get('judge_cases') or []
     files = submission_data.get('files') or []
     entry_file = submission_data.get('entry_file') or None
+    correlation_id = submission_data.get('correlation_id') or f'sub-{sub_id}'
 
-    logger.info(f"Running submission {sub_id} through the executor pipeline...")
+    log_executor_event(
+        'executor.grade.start',
+        executor=EXECUTOR_NAME,
+        submission_id=sub_id,
+        correlation_id=correlation_id,
+        language=language,
+        judge_case_count=len(judge_cases),
+        entry_file=entry_file,
+    )
 
     if judge_cases:
         total_testcases = len(judge_cases)
@@ -70,6 +93,7 @@ async def grade_submission(submission_data):
                 passed_testcases,
                 total_testcases
             )
+            EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status=prepared['status']).inc()
             return
 
         try:
@@ -80,12 +104,15 @@ async def grade_submission(submission_data):
 
                 if result['status'] == 'TLE':
                     await update_submission(sub_id, 'TLE', "Time Limit Exceeded", total_time_ms, passed_testcases, total_testcases)
+                    EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status='TLE').inc()
                     return
                 if result['status'] in ['MEMORY_LIMIT_EXCEEDED', 'MLE']:
                     await update_submission(sub_id, 'MLE', result['output'], total_time_ms, passed_testcases, total_testcases)
+                    EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status='MLE').inc()
                     return
                 if result['status'] in ['RUNTIME_ERROR', 'COMPILATION_ERROR', 'SYSTEM_ERROR']:
                     await update_submission(sub_id, result['status'], result['output'], total_time_ms, passed_testcases, total_testcases)
+                    EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status=result['status']).inc()
                     return
 
                 actual_output = normalize_judge_output(result['output'])
@@ -95,9 +122,11 @@ async def grade_submission(submission_data):
                     continue
 
                 await update_submission(sub_id, 'SUCCESS', result['output'], total_time_ms, passed_testcases, total_testcases)
+                EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status='SUCCESS').inc()
                 return
 
             await update_submission(sub_id, 'SUCCESS', last_output, total_time_ms, passed_testcases, total_testcases)
+            EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status='SUCCESS').inc()
             logger.info(f"Submission {sub_id} finished successfully.")
             return
         finally:
@@ -115,10 +144,14 @@ async def grade_submission(submission_data):
 
     if result['status'] == 'TLE':
         await update_submission(sub_id, 'TLE', "Time Limit Exceeded", time_limit)
+        EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status='TLE').inc()
     elif result['status'] in ['MEMORY_LIMIT_EXCEEDED', 'MLE']:
         await update_submission(sub_id, 'MLE', result['output'], result['time_ms'])
+        EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status='MLE').inc()
     elif result['status'] in ['RUNTIME_ERROR', 'COMPILATION_ERROR', 'SYSTEM_ERROR']:
         await update_submission(sub_id, result['status'], result['output'], result['time_ms'])
+        EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status=result['status']).inc()
     else:
         await update_submission(sub_id, 'SUCCESS', result['output'], result['time_ms'])
+        EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language, status='SUCCESS').inc()
         logger.info(f"Submission {sub_id} finished successfully.")

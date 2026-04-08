@@ -1,6 +1,6 @@
 from rest_framework import serializers
 # Import all the new models we created
-from .models import Submission, ExamRoom, ExamQuestion, RoomParticipant
+from .models import Submission, ExamRoom, ExamQuestion, RoomParticipant, ExamEvent
 from .judging import (
     build_hidden_testcases,
     build_visible_testcases,
@@ -140,3 +140,27 @@ class SubmissionSerializer(serializers.ModelSerializer):
             'passed_testcases', 'total_testcases'
         ]
         read_only_fields = ['status', 'output', 'execution_time_ms', 'user', 'awarded_marks', 'passed_testcases', 'total_testcases']
+
+
+class ExamEventSerializer(serializers.ModelSerializer):
+    actor_username = serializers.CharField(source='actor.username', read_only=True)
+    participant_username = serializers.CharField(source='participant.username', read_only=True)
+
+    class Meta:
+        model = ExamEvent
+        fields = [
+            'id',
+            'room',
+            'question',
+            'submission',
+            'actor',
+            'actor_username',
+            'participant',
+            'participant_username',
+            'event_type',
+            'severity',
+            'message',
+            'metadata',
+            'created_at',
+        ]
+        read_only_fields = fields
