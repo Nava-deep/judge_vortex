@@ -3,7 +3,7 @@ import os
 import sys
 import time
 from kafka.admin import KafkaAdminClient, NewPartitions, NewTopic
-from execution_routing import get_all_submission_topics
+from execution_routing import get_all_submission_topics, get_dead_letter_topic
 
 logging.basicConfig(level=logging.INFO)
 for logger_name in ("kafka", "kafka.conn", "kafka.client"):
@@ -45,7 +45,7 @@ admin_client = None
 try:
     admin_client = get_admin_client()
 
-    submission_topics = list(get_all_submission_topics())
+    submission_topics = [*get_all_submission_topics(), get_dead_letter_topic()]
     described_topics = {
         topic["topic"]: topic
         for topic in admin_client.describe_topics(submission_topics)

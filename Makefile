@@ -1,4 +1,4 @@
-.PHONY: start stop start-codespaces migrate makemigrations check test test-fast kafka-topics
+.PHONY: start stop start-codespaces migrate makemigrations check test test-fast kafka-topics autoscale-once autoscale-loop
 
 PYTHON ?= python3
 
@@ -28,3 +28,9 @@ test-fast:
 
 kafka-topics:
 	KAFKA_BOOTSTRAP_SERVERS=$${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092} $(PYTHON) kafka_setup.py
+
+autoscale-once:
+	$(PYTHON) infrastructure/autoscaler/autoscale_executors.py --once
+
+autoscale-loop:
+	$(PYTHON) infrastructure/autoscaler/autoscale_executors.py

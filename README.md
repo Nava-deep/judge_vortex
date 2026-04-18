@@ -2,7 +2,7 @@
 
 <div align="center">
 
-**A production-style online judge and proctored coding examination platform built around asynchronous execution, secure sandboxing, and real-time exam operations.**
+**A distributed code execution platform for proctored coding exams, built around Kafka worker queues, Docker-isolated execution, autoscaling worker controls, and real-time verdict delivery.**
 
 [![Django](https://img.shields.io/badge/Django-5.2-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
 [![DRF](https://img.shields.io/badge/DRF-API-CB2D3E?style=for-the-badge)](https://www.django-rest-framework.org/)
@@ -19,9 +19,9 @@
 
 ## Overview
 
-Judge Vortex is an online judge designed for **timed coding exams**, **teacher-led proctoring**, and **real-time verdict delivery**.
+Judge Vortex is a distributed code execution platform designed for **timed coding exams**, **teacher-led proctoring**, and **real-time verdict delivery**.
 
-Instead of executing code inside the web request path, the platform persists submissions first, publishes them to Kafka, evaluates them in isolated executor workers, and streams verdicts back to students over WebSockets.
+Instead of executing code inside the web request path, the platform persists submissions first, publishes them to Kafka, evaluates them in Dockerized `isolate` workers, retries failed jobs safely, escalates poisoned jobs to a dead-letter topic, and streams verdicts back to students over WebSockets.
 
 That design makes the project much closer to a real backend/distributed-systems system than a simple coding playground.
 
@@ -32,7 +32,7 @@ If you're scanning this repository quickly, the headline is:
 - built a **distributed online judge** instead of a synchronous compile-and-run app
 - designed a **7-service platform** around Django, PostgreSQL, Redis, Kafka, Docker, and isolated executors
 - supports **11 languages**, **8 Kafka partitions**, and **32 isolate boxes** in the local production-style stack
-- combines **real-time systems**, **execution isolation**, **proctored exam workflows**, and **platform observability** in one project
+- combines **real-time systems**, **execution isolation**, **retry/DLQ handling**, **suspicious execution detection**, and **platform observability** in one project
 
 ## Engineering Highlights At a Glance
 
@@ -46,9 +46,11 @@ If you're scanning this repository quickly, the headline is:
 | Executor topology | 2 executor services (`core`, `java`) |
 | Queue parallelism | 8 Kafka partitions |
 | Sandbox capacity | 32 isolate boxes |
+| Retry handling | bounded redelivery + dead-letter topic escalation |
+| Worker scaling | queue-lag-driven autoscaler control loop |
 | Language coverage | 11 languages |
 | Submission model | Multi-file workspaces with entry-file routing |
-| Moderation | block / unblock / kick / lockout |
+| Moderation | block / unblock / kick / lockout + suspicious event audit trail |
 | Observability | Prometheus metrics + audit events + lifecycle logs |
 
 ## What the System Already Demonstrates
@@ -59,9 +61,12 @@ If you're scanning this repository quickly, the headline is:
 - Kafka-backed asynchronous submission processing
 - Two executor services with language-based routing
 - Linux `isolate` sandbox integration for code execution
+- bounded retry + dead-letter handling for failed execution jobs
+- queue-lag-based worker autoscaling control loop
 - Multi-file student workspaces with explicit entry-file handling
 - Visible vs hidden testcase support
 - Teacher room management, moderation, lockouts, and submission inspection
+- suspicious execution pattern detection for burst submissions, failure storms, and cross-question code reuse
 - Audit events for major room, participant, and submission actions
 - Prometheus metrics and Grafana/Prometheus infrastructure support
 - WebSocket-driven student verdict updates
@@ -106,6 +111,8 @@ Judge Vortex demonstrates the kind of engineering tradeoffs that come up in real
 - `Submit` flow for hidden judge cases
 - Persistent submission records before dispatch
 - Async Kafka dispatch from the web tier to executor workers
+- Bounded redelivery when a worker fails before durable completion
+- Dead-letter escalation for poisoned jobs that exceed retry attempts
 - Verdict persistence and live verdict broadcast back to the student
 - Verdicts including `PASSED`, `WRONG_ANSWER`, `TLE`, `MLE`, `RUNTIME_ERROR`, `COMPILATION_ERROR`, and `SYSTEM_ERROR`
 
@@ -115,6 +122,7 @@ Judge Vortex demonstrates the kind of engineering tradeoffs that come up in real
 - Kick, block, unblock, and lock actions
 - Automatic lockout after fullscreen/tab-violation timeout
 - Room event timeline for major actions
+- Suspicious execution signals for rapid submission bursts, repeated execution failures, and identical code reused across different questions
 - Participant state and solved-question restoration on resume
 
 ## High-Level Architecture
@@ -197,6 +205,8 @@ sequenceDiagram
 **Executor Core + Executor Java**
 - consume language-routed submission topics
 - compile once and reuse workspaces across judge cases where possible
+- requeue failed jobs with bounded delivery attempts
+- escalate poisoned jobs to a Kafka dead-letter topic for operator inspection
 - push final execution updates back to the web tier
 
 ### Isolation Layer
@@ -242,6 +252,7 @@ The platform now records major room and submission events in the database:
 - question creation, update, deletion
 - participant join, resume, lock, unlock, kick
 - submission receipt, queueing, queue failure, and final update
+- suspicious execution events such as submission bursts, repeated failures, and cross-question code reuse
 
 This makes the system easier to debug, easier to moderate, and much easier to explain in interviews.
 
@@ -270,6 +281,7 @@ Executor metrics include:
 - executor processing latency
 - callback success/failure counts
 - executor failure counts by stage
+- retry counts and dead-letter escalations
 
 ### Structured Lifecycle Logging
 
@@ -291,8 +303,10 @@ Implemented platform hardening now includes:
 - fail-open queue throttling if Kafka/Redis is unavailable
 - commit-after-persist behavior in executor workers for safer Kafka consumption
 - retrying executor callbacks back to Django before surfacing failure
+- bounded Kafka redelivery with dead-letter escalation after repeated failures
 - Docker healthchecks for Postgres, Redis, Kafka, Nginx, and executor services
 - audit-backed moderation trail for room actions
+- optional queue-lag-based autoscaler for executor services
 
 ## Language Support
 
@@ -316,7 +330,7 @@ Current active support:
 judge_vortex/
 ├── core_api/                    domain models, APIs, serializers, audit, health, metrics
 ├── executor_service/            executor workers, isolate sandbox, grading, worker observability
-├── infrastructure/              Docker Compose, nginx, Prometheus, Grafana wiring
+├── infrastructure/              Docker Compose, autoscaler, nginx, Prometheus, Grafana wiring
 ├── realtime/                    Channels consumers and websocket routing
 ├── shared/                      pure judging helpers shared by web and executor layers
 ├── templates/                   teacher dashboard, workspace, auth and landing pages
@@ -342,6 +356,7 @@ judge_vortex/
 - [executor_service/sandbox.py](./executor_service/sandbox.py)
 - [executor_service/observability.py](./executor_service/observability.py)
 - [execution_routing.py](./execution_routing.py)
+- [infrastructure/autoscaler/autoscale_executors.py](./infrastructure/autoscaler/autoscale_executors.py)
 - [infrastructure/docker-compose.yml](./infrastructure/docker-compose.yml)
 
 ## Local Setup
@@ -380,6 +395,8 @@ make check
 make test
 make test-fast
 make kafka-topics
+make autoscale-once
+make autoscale-loop
 ```
 
 ## Testing
@@ -406,10 +423,10 @@ Current scaling levers:
 - executor replica counts are controlled through environment variables
 - isolate box count is configurable and currently defaults to `32` in Compose
 - queue depth is exposed for operational visibility
+- an autoscaler can increase executor replicas from measured Kafka lag
 
 Natural next steps for scaling:
 - add more executor replicas per topic
-- introduce dead-letter/retry escalation beyond current at-least-once callback persistence
 - move the web tier from `runserver` to a dedicated ASGI process manager in production
 - shard heavy language families into separate executor pools if needed
 
@@ -419,14 +436,14 @@ Intentional tradeoffs in the current design:
 
 - websocket delivery is intentionally simple and centered on per-user channels
 - callback auth is still lightweight and could be hardened further for internet-facing deployment
-- queue retry semantics rely on Kafka redelivery plus callback persistence rather than a full DLQ workflow
+- autoscaling currently targets Docker Compose replicas for local/demo environments rather than a full Kubernetes-style orchestrator
 - startup scripts are optimized for local reproducibility rather than a full production orchestrator
 
 Strong future improvements:
-- dead-letter queue and replay tooling
+- dead-letter replay tooling with an operator UI
 - signed internal executor callbacks
-- per-room suspicious-event analytics
-- autoscaling executor workers from queue lag
+- richer suspicious-event scoring per room or cohort
+- autoscaling policies driven by Prometheus metrics and SLOs
 - richer teacher timeline UI on top of the audit event model
 
 ## Interview Talking Points
@@ -444,13 +461,22 @@ Strong future improvements:
    It gives the system a durable source of truth even if Kafka or a worker is temporarily unavailable.
 
 5. **How do you enforce exam integrity?**
-   Room-level assignment, fullscreen gating, lockouts, teacher moderation, and hidden testcase protection all reinforce exam constraints.
+   Room-level assignment, fullscreen gating, lockouts, teacher moderation, suspicious-event detection, and hidden testcase protection all reinforce exam constraints.
+
+6. **What happens if a worker crashes after consuming a message?**
+   Offsets are committed only after the verdict is durably pushed back or the message is requeued/dead-lettered, so work is not silently lost.
+
+7. **How do retries avoid creating an infinite poison-message loop?**
+   Each job carries a bounded `delivery_attempt` count. After the configured limit, it is escalated to a dead-letter topic instead of being retried forever.
+
+8. **How would you scale the system during a contest spike?**
+   Increase Kafka partitions, let the autoscaler raise executor replicas from queue lag, and split heavier language pools further if they become hotspots.
 
 ## Resume-Friendly Highlights
 
-- Built a **7-service online judge platform** with Django, DRF, Channels, PostgreSQL, Redis, Kafka, Docker, and Linux `isolate`, supporting **11 languages**, **8 Kafka partitions**, and **32 sandbox slots** for asynchronous code evaluation.
-- Designed a queue-backed execution pipeline with language-routed executor workers, durable submission persistence, structured audit events, health/readiness checks, Prometheus metrics, and websocket verdict delivery to keep the web tier responsive under load.
-- Implemented proctored exam workflows including timed rooms, randomized question assignment, visible vs hidden testcase evaluation, participant moderation, lockouts, and multi-file workspaces to model realistic coding assessments rather than toy judge behavior.
+- Built a **distributed code execution platform** with Django, DRF, Channels, PostgreSQL, Redis, Kafka, Docker, and Linux `isolate`, supporting **11 languages**, **8 Kafka partitions**, and **32 sandbox slots** for asynchronous code evaluation.
+- Designed a queue-backed execution pipeline with language-routed executor workers, durable submission persistence, bounded retry plus dead-letter escalation, structured audit events, health/readiness checks, Prometheus metrics, and websocket verdict delivery to keep the web tier responsive under load.
+- Implemented proctored exam workflows including timed rooms, randomized question assignment, visible vs hidden testcase evaluation, participant moderation, lockouts, suspicious execution detection, and multi-file workspaces to model realistic coding assessments rather than toy judge behavior.
 
 ---
 

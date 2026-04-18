@@ -34,6 +34,10 @@ EXECUTOR_FAMILY_CONFIG = {
 }
 
 
+def get_dead_letter_topic():
+    return os.getenv("KAFKA_DEAD_LETTER_TOPIC", "code_submissions_dead_letter")
+
+
 def get_executor_routes():
     routes = {}
     for family, config in EXECUTOR_FAMILY_CONFIG.items():

@@ -38,6 +38,16 @@ EXECUTOR_CALLBACK_TOTAL = Counter(
     'Executor callback attempts back to Django.',
     labelnames=('executor', 'result'),
 )
+EXECUTOR_RETRY_TOTAL = Counter(
+    'vortex_executor_retry_total',
+    'Executor retries triggered after grading or callback failures.',
+    labelnames=('executor', 'reason'),
+)
+EXECUTOR_DLQ_TOTAL = Counter(
+    'vortex_executor_dead_letter_total',
+    'Executor messages escalated to the dead-letter topic.',
+    labelnames=('executor', 'reason'),
+)
 
 
 def log_executor_event(event_type, **payload):

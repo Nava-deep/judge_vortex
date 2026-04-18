@@ -818,3 +818,168 @@ class AuditTrailTests(APITestCase):
         submission = Submission.objects.get(id=response.data['id'])
         self.assertTrue(ExamEvent.objects.filter(submission=submission, event_type='submission.received').exists())
         self.assertTrue(ExamEvent.objects.filter(submission=submission, event_type='submission.queued').exists())
+
+    @patch('core_api.views.KafkaProducer')
+    def test_submission_burst_creates_suspicious_event(self, kafka_producer_cls):
+        room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Burst Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=1),
+        )
+        question = ExamQuestion.objects.create(
+            room=room,
+            title='Burst Question',
+            description='Return 1.',
+            testcase_input='1',
+            expected_output='1',
+            total_marks=5,
+        )
+        participant = RoomParticipant.objects.create(room=room, student=self.student)
+        participant.assigned_questions.set([question])
+
+        for _ in range(4):
+            Submission.objects.create(
+                user=self.student,
+                room=room,
+                question=question,
+                code='print(1)',
+                language='python',
+                files=[],
+                entry_file='main.py',
+            )
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'print(1)',
+                'language': 'python',
+                'room_id': room.id,
+                'question_id': question.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        submission = Submission.objects.get(id=response.data['id'])
+        self.assertTrue(
+            ExamEvent.objects.filter(
+                submission=submission,
+                event_type='suspicious.submission_burst',
+            ).exists()
+        )
+
+    @patch('core_api.views.KafkaProducer')
+    def test_cross_question_code_reuse_creates_suspicious_event(self, kafka_producer_cls):
+        room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Reuse Room',
+            questions_to_assign=2,
+            join_deadline=timezone.now() + timedelta(days=1),
+        )
+        question_one = ExamQuestion.objects.create(
+            room=room,
+            title='Question One',
+            description='Return 1.',
+            testcase_input='1',
+            expected_output='1',
+            total_marks=5,
+        )
+        question_two = ExamQuestion.objects.create(
+            room=room,
+            title='Question Two',
+            description='Return 2.',
+            testcase_input='2',
+            expected_output='2',
+            total_marks=5,
+        )
+        participant = RoomParticipant.objects.create(room=room, student=self.student)
+        participant.assigned_questions.set([question_one, question_two])
+
+        prior_files = [{'path': 'main.py', 'content': 'from helper import get\nprint(get())'}, {'path': 'helper.py', 'content': 'def get():\n    return 1'}]
+        Submission.objects.create(
+            user=self.student,
+            room=room,
+            question=question_one,
+            code='from helper import get\nprint(get())',
+            language='python',
+            files=prior_files,
+            entry_file='main.py',
+        )
+
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'from helper import get\nprint(get())',
+                'language': 'python',
+                'room_id': room.id,
+                'question_id': question_two.id,
+                'files': prior_files,
+                'entry_file': 'main.py',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        submission = Submission.objects.get(id=response.data['id'])
+        self.assertTrue(
+            ExamEvent.objects.filter(
+                submission=submission,
+                event_type='suspicious.cross_question_code_reuse',
+            ).exists()
+        )
+
+    def test_failure_storm_creates_suspicious_event_on_update(self):
+        room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Failure Storm Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=1),
+        )
+        question = ExamQuestion.objects.create(
+            room=room,
+            title='Storm Question',
+            description='Return 1.',
+            testcase_input='1',
+            expected_output='1',
+            total_marks=5,
+        )
+
+        for _ in range(3):
+            Submission.objects.create(
+                user=self.student,
+                room=room,
+                question=question,
+                code='print(',
+                language='python',
+                status='COMPILATION_ERROR',
+            )
+
+        submission = Submission.objects.create(
+            user=self.student,
+            room=room,
+            question=question,
+            code='print(',
+            language='python',
+            status='PENDING',
+        )
+
+        response = self.client.patch(
+            f'/api/submissions/{submission.id}/update/',
+            {
+                'status': 'COMPILATION_ERROR',
+                'output': 'SyntaxError',
+                'execution_time_ms': 0,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            ExamEvent.objects.filter(
+                submission=submission,
+                event_type='suspicious.failure_storm',
+            ).exists()
+        )

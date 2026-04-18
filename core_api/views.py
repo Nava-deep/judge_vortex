@@ -47,6 +47,7 @@ from .metrics import (
     SUBMISSION_VERDICTS_TOTAL,
     WEBSOCKET_DELIVERIES_TOTAL,
 )
+from .suspicion import detect_suspicious_result_patterns, detect_suspicious_submission_patterns
 from .judging import (
     build_hidden_testcases,
     get_hidden_testcase_count,
@@ -1140,6 +1141,7 @@ class SubmissionCreateView(generics.CreateAPIView):
             entry_file=submission.entry_file,
             judge_case_count=len(judge_cases),
         )
+        detect_suspicious_submission_patterns(submission)
         
         # Push to Kafka for Native Execution
         producer = get_kafka_producer()
@@ -1147,6 +1149,7 @@ class SubmissionCreateView(generics.CreateAPIView):
         message = {
             'submission_id': submission.id,
             'correlation_id': f'sub-{submission.id}',
+            'delivery_attempt': 1,
             'code': submission.code,
             'files': submission.files,
             'entry_file': submission.entry_file,
@@ -1324,6 +1327,7 @@ class SubmissionUpdateView(APIView):
                 passed_testcases=submission.passed_testcases,
                 total_testcases=submission.total_testcases,
             )
+            detect_suspicious_result_patterns(submission)
 
             # Broadcast to WebSockets
             emit_user_event(submission.user.id, 'submission.update', {

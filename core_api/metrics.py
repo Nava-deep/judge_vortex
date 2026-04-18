@@ -51,3 +51,8 @@ AUDIT_EVENTS_TOTAL = Counter(
     'Exam audit events written to the database.',
     labelnames=('event_type', 'severity'),
 )
+SUSPICIOUS_EVENTS_TOTAL = Counter(
+    'vortex_suspicious_events_total',
+    'Suspicious execution pattern events detected by the web tier.',
+    labelnames=('pattern',),
+)

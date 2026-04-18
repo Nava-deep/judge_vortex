@@ -22,6 +22,7 @@ fi
 echo "Cleaning up local processes..."
 pkill -f "executor_service/main.py" 2>/dev/null
 pkill -f "manage.py runserver" 2>/dev/null
+pkill -f "infrastructure/autoscaler/autoscale_executors.py" 2>/dev/null
 
 # 2. NETWORK PREP
 echo "Preparing isolated bridge network..."
@@ -34,6 +35,7 @@ KAFKA_SUBMISSIONS_TOPIC_PARTITIONS="${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS:-8}"
 KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS:-127.0.0.1:9092}"
 EXECUTOR_CORE_REPLICAS="${EXECUTOR_CORE_REPLICAS:-1}"
 EXECUTOR_JAVA_REPLICAS="${EXECUTOR_JAVA_REPLICAS:-1}"
+ENABLE_EXECUTOR_AUTOSCALER="${ENABLE_EXECUTOR_AUTOSCALER:-0}"
 FORCE_BUILD="${FORCE_BUILD:-0}"
 MAKE_MIGRATIONS="${MAKE_MIGRATIONS:-0}"
 CORE_SERVICES=(db zookeeper kafka redis nginx)
@@ -84,10 +86,18 @@ echo "Ensuring Kafka topic topology..."
 sleep 6
 KAFKA_BOOTSTRAP_SERVERS="${KAFKA_BOOTSTRAP_SERVERS}" KAFKA_SUBMISSIONS_TOPIC_PARTITIONS="${KAFKA_SUBMISSIONS_TOPIC_PARTITIONS}" python3 kafka_setup.py 2>/dev/null
 
+if [ "${ENABLE_EXECUTOR_AUTOSCALER}" = "1" ]; then
+  echo "Starting executor autoscaler..."
+  python3 infrastructure/autoscaler/autoscale_executors.py > /tmp/judge_vortex_autoscaler.log 2>&1 &
+fi
+
 echo "--------------------------------------------------------"
 echo "JUDGE VORTEX IS ONLINE"
 echo "Workspace:  http://127.0.0.1:53562"
 echo "Executors:  core=${EXECUTOR_CORE_REPLICAS}, java=${EXECUTOR_JAVA_REPLICAS}"
+if [ "${ENABLE_EXECUTOR_AUTOSCALER}" = "1" ]; then
+echo "Autoscaler: enabled (log: /tmp/judge_vortex_autoscaler.log)"
+fi
 echo "Grafana:    http://localhost:3000"
 echo "Prometheus: http://localhost:9090"
 echo "--------------------------------------------------------"

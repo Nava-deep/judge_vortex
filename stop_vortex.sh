@@ -8,6 +8,7 @@ echo "--------------------------------------------------------"
 echo "Stopping Python Services..."
 pkill -15 -f "executor_service/main.py" 2>/dev/null
 pkill -15 -f "manage.py runserver" 2>/dev/null
+pkill -15 -f "infrastructure/autoscaler/autoscale_executors.py" 2>/dev/null
 sleep 2 
 
 # 2. STOP & REMOVE CONTAINERS (Infra only)

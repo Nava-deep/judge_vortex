@@ -3,15 +3,17 @@ import json
 import os
 import time
 from collections import defaultdict
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 from kafka.errors import NoBrokersAvailable
 from kafka.structs import OffsetAndMetadata
 from grader import grade_submission, update_submission
 from prometheus_client import start_http_server
 from observability import (
+    EXECUTOR_DLQ_TOTAL,
     EXECUTOR_FAILURES_TOTAL,
     EXECUTOR_INFLIGHT,
     EXECUTOR_PROCESSING_SECONDS,
+    EXECUTOR_RETRY_TOTAL,
     EXECUTOR_SUBMISSIONS_TOTAL,
     EXECUTOR_VERDICTS_TOTAL,
     log_executor_event,
@@ -23,6 +25,8 @@ KAFKA_BOOTSTRAP_SERVERS = [server.strip() for server in os.getenv("KAFKA_BOOTSTR
 KAFKA_EXECUTOR_GROUP = os.getenv("KAFKA_EXECUTOR_GROUP", "judge_vortex_executor")
 EXECUTOR_PROMETHEUS_PORT = int(os.getenv("EXECUTOR_PROMETHEUS_PORT", "8001"))
 MAX_CONCURRENT_EXECUTIONS = max(2, int(os.getenv("EXECUTOR_MAX_CONCURRENCY", min(os.cpu_count() or 4, 8))))
+MAX_DELIVERY_ATTEMPTS = max(1, int(os.getenv("EXECUTOR_MAX_DELIVERY_ATTEMPTS", "3")))
+KAFKA_DEAD_LETTER_TOPIC = os.getenv("KAFKA_DEAD_LETTER_TOPIC", "code_submissions_dead_letter")
 EXECUTOR_NAME = os.getenv("EXECUTOR_NAME", "executor")
 SUPPORTED_LANGUAGES = {
     language.strip().lower()
@@ -78,6 +82,26 @@ class CommitTracker:
                 self.completed_offsets[topic_partition].discard(offset)
             self.next_commit_offsets[topic_partition] = candidate_offset
 
+
+def get_kafka_producer():
+    while True:
+        try:
+            producer = KafkaProducer(
+                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+                api_version=(0, 10, 1),
+                retries=3,
+                linger_ms=5,
+            )
+            log_executor_event('executor.kafka.producer_ready', executor=EXECUTOR_NAME, bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS)
+            return producer
+        except NoBrokersAvailable:
+            log_executor_event('executor.kafka.producer_waiting', executor=EXECUTOR_NAME, retry_in_seconds=2)
+            time.sleep(2)
+        except Exception as exc:
+            log_executor_event('executor.kafka.producer_error', executor=EXECUTOR_NAME, error=str(exc))
+            time.sleep(5)
+
 def get_kafka_consumer():
     """Attempts to connect to Kafka with a retry loop to handle startup lag."""
     while True:
@@ -101,7 +125,69 @@ def get_kafka_consumer():
             log_executor_event('executor.kafka.error', executor=EXECUTOR_NAME, topic=KAFKA_SUBMISSIONS_TOPIC, error=str(e))
             time.sleep(5)
 
-async def run_grade_task(submission_data, topic_partition, message_offset, commit_tracker):
+
+def _get_delivery_attempt(submission_data):
+    raw_attempt = submission_data.get('delivery_attempt', 1)
+    try:
+        return max(1, int(raw_attempt))
+    except (TypeError, ValueError):
+        return 1
+
+
+async def _publish_retry(producer, submission_data, topic_partition, message_offset, error):
+    next_attempt = _get_delivery_attempt(submission_data) + 1
+    retry_payload = {
+        **submission_data,
+        'delivery_attempt': next_attempt,
+        'last_executor_error': str(error),
+        'last_failed_topic': topic_partition.topic,
+        'last_failed_partition': topic_partition.partition,
+        'last_failed_offset': message_offset,
+    }
+    await asyncio.to_thread(
+        lambda: producer.send(topic_partition.topic, value=retry_payload).get(timeout=10)
+    )
+    EXECUTOR_RETRY_TOTAL.labels(executor=EXECUTOR_NAME, reason='grade_or_callback_failure').inc()
+    log_executor_event(
+        'executor.task.requeued',
+        executor=EXECUTOR_NAME,
+        submission_id=submission_data.get('submission_id'),
+        topic=topic_partition.topic,
+        partition=topic_partition.partition,
+        offset=message_offset,
+        next_attempt=next_attempt,
+        error=str(error),
+    )
+
+
+async def _publish_dead_letter(producer, submission_data, topic_partition, message_offset, error):
+    dead_letter_payload = {
+        **submission_data,
+        'failed_executor': EXECUTOR_NAME,
+        'dead_letter_reason': 'max_delivery_attempts_exceeded',
+        'dead_letter_error': str(error),
+        'dead_letter_topic': topic_partition.topic,
+        'dead_letter_partition': topic_partition.partition,
+        'dead_letter_offset': message_offset,
+        'failed_at_epoch_ms': int(time.time() * 1000),
+    }
+    await asyncio.to_thread(
+        lambda: producer.send(KAFKA_DEAD_LETTER_TOPIC, value=dead_letter_payload).get(timeout=10)
+    )
+    EXECUTOR_DLQ_TOTAL.labels(executor=EXECUTOR_NAME, reason='max_delivery_attempts_exceeded').inc()
+    log_executor_event(
+        'executor.task.dead_lettered',
+        executor=EXECUTOR_NAME,
+        submission_id=submission_data.get('submission_id'),
+        source_topic=topic_partition.topic,
+        source_partition=topic_partition.partition,
+        source_offset=message_offset,
+        dead_letter_topic=KAFKA_DEAD_LETTER_TOPIC,
+        error=str(error),
+    )
+
+
+async def run_grade_task(submission_data, topic_partition, message_offset, commit_tracker, producer):
     """
     Acquires a slot from the semaphore, grades the submission, and commits
     the Kafka offset only after the result has been persisted back to Django.
@@ -109,6 +195,7 @@ async def run_grade_task(submission_data, topic_partition, message_offset, commi
     async with gatekeeper:
         sub_id = submission_data.get('submission_id', 'Unknown')
         language = str(submission_data.get('language', '')).strip().lower()
+        delivery_attempt = _get_delivery_attempt(submission_data)
         EXECUTOR_SUBMISSIONS_TOTAL.labels(executor=EXECUTOR_NAME, language=language or 'unknown').inc()
         EXECUTOR_INFLIGHT.labels(executor=EXECUTOR_NAME).inc()
         started_at = time.perf_counter()
@@ -120,6 +207,7 @@ async def run_grade_task(submission_data, topic_partition, message_offset, commi
             partition=topic_partition.partition,
             offset=message_offset,
             language=language,
+            delivery_attempt=delivery_attempt,
         )
         
         try:
@@ -140,14 +228,32 @@ async def run_grade_task(submission_data, topic_partition, message_offset, commi
             log_executor_event('executor.task.finished', executor=EXECUTOR_NAME, submission_id=sub_id, language=language)
         except Exception as e:
             EXECUTOR_FAILURES_TOTAL.labels(executor=EXECUTOR_NAME, stage='grade').inc()
-            log_executor_event('executor.task.error', executor=EXECUTOR_NAME, submission_id=sub_id, language=language, error=str(e))
+            log_executor_event(
+                'executor.task.error',
+                executor=EXECUTOR_NAME,
+                submission_id=sub_id,
+                language=language,
+                delivery_attempt=delivery_attempt,
+                error=str(e),
+            )
             try:
-                await update_submission(sub_id, "SYSTEM_ERROR", f"Executor error: {e}", 0)
-                EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language or 'unknown', status='SYSTEM_ERROR').inc()
+                if delivery_attempt < MAX_DELIVERY_ATTEMPTS:
+                    await _publish_retry(producer, submission_data, topic_partition, message_offset, e)
+                else:
+                    await _publish_dead_letter(producer, submission_data, topic_partition, message_offset, e)
+                    await update_submission(sub_id, "SYSTEM_ERROR", f"Executor error: {e}", 0)
+                    EXECUTOR_VERDICTS_TOTAL.labels(executor=EXECUTOR_NAME, language=language or 'unknown', status='SYSTEM_ERROR').inc()
                 await commit_tracker.mark_completed(topic_partition, message_offset)
             except Exception as update_error:
                 EXECUTOR_FAILURES_TOTAL.labels(executor=EXECUTOR_NAME, stage='callback').inc()
-                log_executor_event('executor.task.callback_failed', executor=EXECUTOR_NAME, submission_id=sub_id, language=language, error=str(update_error))
+                log_executor_event(
+                    'executor.task.callback_failed',
+                    executor=EXECUTOR_NAME,
+                    submission_id=sub_id,
+                    language=language,
+                    delivery_attempt=delivery_attempt,
+                    error=str(update_error),
+                )
         finally:
             EXECUTOR_INFLIGHT.labels(executor=EXECUTOR_NAME).dec()
             EXECUTOR_PROCESSING_SECONDS.labels(executor=EXECUTOR_NAME, language=language or 'unknown').observe(max(time.perf_counter() - started_at, 0.0))
@@ -160,6 +266,7 @@ async def start_worker():
     # 2. Get the consumer using our retry logic
     # Note: KafkaConsumer is synchronous, so we run it in a loop
     consumer = get_kafka_consumer()
+    producer = get_kafka_producer()
     commit_tracker = CommitTracker(consumer)
     active_tasks = set()
     is_paused = False
@@ -207,6 +314,7 @@ async def start_worker():
                         topic_partition,
                         message.offset,
                         commit_tracker,
+                        producer,
                     )
                 )
                 active_tasks.add(task)
