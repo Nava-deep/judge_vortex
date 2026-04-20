@@ -1,9 +1,12 @@
 import logging
 import os
+
 from rest_framework.throttling import UserRateThrottle
 from kafka import KafkaConsumer, TopicPartition
 from kafka.admin import KafkaAdminClient
 from execution_routing import get_topic_consumer_groups
+
+from .integrations import evaluate_submission_rate_limit, get_runtime_config
 from .metrics import QUEUE_DEPTH_GAUGE
 
 logger = logging.getLogger(__name__)
@@ -36,7 +39,13 @@ class KafkaManager:
         return cls._admin
 
 class DynamicQueueThrottle(UserRateThrottle):
+    def __init__(self):
+        super().__init__()
+        self._external_wait_seconds = None
+
     def allow_request(self, request, view):
+        self._external_wait_seconds = None
+
         # Only throttle the submission endpoint.
         # Other POST actions such as room/question management should never be
         # blocked by queue depth or Redis throttling.
@@ -45,6 +54,13 @@ class DynamicQueueThrottle(UserRateThrottle):
 
         if request.user and request.user.is_staff:
             return True
+
+        runtime_config = get_runtime_config()
+        queue_config = runtime_config.get("queue_throttle") or {}
+        limiter_config = runtime_config.get("distributed_rate_limiter") or {}
+        busy_threshold = int(queue_config.get("allow_when_depth_at_or_below", 0) or 0)
+        limiter_mode = str(limiter_config.get("mode", "queue_busy")).strip().lower()
+        queue_depth = None
 
         try:
             consumer = KafkaManager.get_consumer()
@@ -75,18 +91,33 @@ class DynamicQueueThrottle(UserRateThrottle):
 
             # 🚀 PRODUCTION LOGIC:
             # If the queue is empty (depth <= 0), allow the request immediately.
-            if queue_depth <= 0:
+            if queue_depth <= busy_threshold and limiter_mode != "always":
                 return True
 
         except Exception as e:
             logger.error(f"Kafka Throttle Error: {e}")
             QUEUE_DEPTH_GAUGE.set(0)
-            # Fall through to the standard DRF throttle below only if the cache
-            # backend is healthy. If Redis is also unavailable, fail open.
+
+        should_use_external_limiter = limiter_mode == "always" or queue_depth is None or queue_depth > busy_threshold
+        if should_use_external_limiter:
+            external_result = evaluate_submission_rate_limit(request, config=runtime_config)
+            if external_result is not None and external_result.applied:
+                if external_result.allowed:
+                    return True
+                self._external_wait_seconds = external_result.retry_after_seconds
+                return False
 
         # If queue is busy, enforce the 'user' limit defined in settings.py
+        if not bool(queue_config.get("fallback_to_drf", True)):
+            return True
+
         try:
             return super().allow_request(request, view)
         except Exception as e:
             logger.error(f"Throttle Cache Error: {e}")
             return True
+
+    def wait(self):
+        if self._external_wait_seconds is not None:
+            return self._external_wait_seconds
+        return super().wait()
