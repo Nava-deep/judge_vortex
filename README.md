@@ -25,6 +25,16 @@ Instead of executing code inside the web request path, the platform persists sub
 
 That design makes the project much closer to a real backend/distributed-systems system than a simple coding playground.
 
+## Control Plane Integration
+
+Judge Vortex can now participate in the three-project platform flow:
+
+- `Config Control Plane` publishes runtime config under `judge-vortex.runtime`
+- `DistributedRateLimiter` exposes an internal `/internal/evaluate` API for submission decisions
+- Judge Vortex reads the runtime config, checks queue depth, and calls the limiter for `/api/submissions/submit/` when the queue is busy or when the config switches the limiter to `always`
+
+Relevant environment variables are documented in [.env.example](./.env.example).
+
 ## 30-Second Recruiter Summary
 
 If you're scanning this repository quickly, the headline is:

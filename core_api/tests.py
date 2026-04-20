@@ -1,14 +1,17 @@
 from datetime import timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.test import override_settings
 from django.utils import timezone
+from kafka import TopicPartition
 from rest_framework import serializers
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from . import views as core_views
+from .integrations import ExternalRateLimitResult
 from .judging import build_testcases
 from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, Submission
 from execution_routing import get_submission_topic
@@ -541,6 +544,176 @@ class SubmissionCreateHiddenCasesTests(APITestCase):
                 submission=submission,
             ).exists()
         )
+
+
+@override_settings(
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'judge-vortex-throttle-tests',
+        }
+    },
+    REST_FRAMEWORK={
+        'DEFAULT_AUTHENTICATION_CLASSES': [
+            'rest_framework.authentication.TokenAuthentication',
+        ],
+        'DEFAULT_PERMISSION_CLASSES': [
+            'rest_framework.permissions.IsAuthenticated',
+        ],
+        'DEFAULT_THROTTLE_CLASSES': [
+            'core_api.throttles.DynamicQueueThrottle',
+        ],
+        'DEFAULT_THROTTLE_RATES': {
+            'user': '1/minute',
+            'burst': '1/second',
+        },
+    },
+)
+class SubmissionThrottleIntegrationTests(APITestCase):
+    def setUp(self):
+        core_views._kafka_producer = None
+        self.teacher = User.objects.create_user(username='teacher-throttle', password='pass123')
+        self.student = User.objects.create_user(username='student-throttle', password='pass123')
+        self.token = Token.objects.create(user=self.student)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.token.key}')
+        self.room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Throttle Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=7),
+        )
+        self.question = ExamQuestion.objects.create(
+            room=self.room,
+            title='Throttle Question',
+            description='Return the square.',
+            testcase_input='2',
+            expected_output='4',
+            total_marks=10,
+        )
+        join_response = self.client.post(
+            '/api/rooms/join/',
+            {'room_code': self.room.room_code},
+            format='json',
+        )
+        self.assertEqual(join_response.status_code, 201)
+
+    def _prime_busy_queue(self, consumer, admin, topic_name='judge-vortex.submissions.python'):
+        topic_partition = TopicPartition(topic_name, 0)
+        consumer.partitions_for_topic.return_value = {0}
+        consumer.end_offsets.return_value = {topic_partition: 5}
+        admin.list_consumer_group_offsets.return_value = {topic_partition: SimpleNamespace(offset=0)}
+
+    @patch('core_api.views.KafkaProducer')
+    def test_queue_busy_uses_distributed_rate_limiter_block(self, kafka_producer_cls):
+        with patch('core_api.throttles.KafkaManager.get_consumer') as get_consumer, patch(
+            'core_api.throttles.KafkaManager.get_admin'
+        ) as get_admin, patch(
+            'core_api.throttles.get_topic_consumer_groups',
+            return_value=[('judge-vortex.submissions.python', 'executor-core')],
+        ), patch(
+            'core_api.throttles.get_runtime_config',
+            return_value={
+                'distributed_rate_limiter': {
+                    'enabled': True,
+                    'mode': 'queue_busy',
+                    'route': '/api/submissions/submit/',
+                    'timeout_ms': 250,
+                    'fail_open': True,
+                },
+                'queue_throttle': {
+                    'allow_when_depth_at_or_below': 0,
+                    'fallback_to_drf': True,
+                },
+            },
+        ), patch(
+            'core_api.throttles.evaluate_submission_rate_limit',
+            return_value=ExternalRateLimitResult(
+                allowed=False,
+                applied=True,
+                retry_after_seconds=9,
+                policy_name='judge-vortex-submission-limit',
+            ),
+        ):
+            consumer = get_consumer.return_value
+            admin = get_admin.return_value
+            self._prime_busy_queue(consumer, admin)
+
+            response = self.client.post(
+                '/api/submissions/submit/',
+                {
+                    'code': 'print(4)',
+                    'language': 'python',
+                    'room_id': self.room.id,
+                    'question_id': self.question.id,
+                },
+                format='json',
+            )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(Submission.objects.count(), 0)
+        kafka_producer_cls.assert_not_called()
+
+    @patch('core_api.views.KafkaProducer')
+    def test_queue_busy_falls_back_to_local_drf_when_external_policy_is_missing(self, kafka_producer_cls):
+        with patch('core_api.throttles.KafkaManager.get_consumer') as get_consumer, patch(
+            'core_api.throttles.KafkaManager.get_admin'
+        ) as get_admin, patch(
+            'core_api.throttles.get_topic_consumer_groups',
+            return_value=[('judge-vortex.submissions.python', 'executor-core')],
+        ), patch(
+            'core_api.throttles.get_runtime_config',
+            return_value={
+                'distributed_rate_limiter': {
+                    'enabled': True,
+                    'mode': 'queue_busy',
+                    'route': '/api/submissions/submit/',
+                    'timeout_ms': 250,
+                    'fail_open': True,
+                },
+                'queue_throttle': {
+                    'allow_when_depth_at_or_below': 0,
+                    'fallback_to_drf': True,
+                },
+            },
+        ), patch(
+            'core_api.throttles.evaluate_submission_rate_limit',
+            return_value=ExternalRateLimitResult(
+                allowed=True,
+                applied=False,
+            ),
+        ), patch.dict(
+            'core_api.throttles.DynamicQueueThrottle.THROTTLE_RATES',
+            {'user': '1/minute', 'burst': '1/second'},
+        ):
+            consumer = get_consumer.return_value
+            admin = get_admin.return_value
+            self._prime_busy_queue(consumer, admin)
+
+            first = self.client.post(
+                '/api/submissions/submit/',
+                {
+                    'code': 'print(4)',
+                    'language': 'python',
+                    'room_id': self.room.id,
+                    'question_id': self.question.id,
+                },
+                format='json',
+            )
+            second = self.client.post(
+                '/api/submissions/submit/',
+                {
+                    'code': 'print(4)',
+                    'language': 'python',
+                    'room_id': self.room.id,
+                    'question_id': self.question.id,
+                },
+                format='json',
+            )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 429)
+        self.assertEqual(Submission.objects.count(), 1)
+        self.assertEqual(kafka_producer_cls.return_value.send.call_count, 1)
 
 
 @override_settings(
