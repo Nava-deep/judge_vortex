@@ -110,6 +110,24 @@ class RoomParticipant(models.Model):
     def __str__(self):
         return f"{self.student.username} in {self.room.title}"
 
+
+class ExamWorkspaceSnapshot(models.Model):
+    room = models.ForeignKey(ExamRoom, on_delete=models.CASCADE, related_name='workspace_snapshots')
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exam_workspace_snapshots')
+    question = models.ForeignKey(ExamQuestion, on_delete=models.CASCADE, related_name='workspace_snapshots')
+    language = models.CharField(max_length=50, default='python')
+    code = models.TextField(blank=True, default='')
+    files = models.JSONField(default=list, blank=True)
+    entry_file = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('room', 'student', 'question')
+
+    def __str__(self):
+        return f"WorkspaceSnapshot<{self.student.username}:{self.question_id}>"
+
 # --- 4. Submissions (Updated) ---
 class Submission(models.Model):
     """The central transaction of the OJ. Links a User, Room, Question, and their Code."""

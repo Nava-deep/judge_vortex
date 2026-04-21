@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, SocialAccount, Submission, UserProfile
+from .models import ExamEvent, ExamQuestion, ExamRoom, ExamWorkspaceSnapshot, RoomParticipant, SocialAccount, Submission, UserProfile
 
 
 @admin.register(ExamRoom)
@@ -20,10 +20,19 @@ class ExamQuestionAdmin(admin.ModelAdmin):
 
 @admin.register(RoomParticipant)
 class RoomParticipantAdmin(admin.ModelAdmin):
-    list_display = ('id', 'room', 'student', 'access_locked', 'access_locked_at', 'joined_at')
+    list_display = ('id', 'room', 'student', 'access_locked', 'access_locked_at', 'last_presence_at', 'joined_at')
     list_filter = ('access_locked', 'room')
     search_fields = ('room__title', 'room__room_code', 'student__username')
     filter_horizontal = ('assigned_questions',)
+
+
+@admin.register(ExamWorkspaceSnapshot)
+class ExamWorkspaceSnapshotAdmin(admin.ModelAdmin):
+    list_display = ('id', 'room', 'student', 'question', 'language', 'updated_at')
+    list_filter = ('room', 'language')
+    search_fields = ('room__title', 'room__room_code', 'student__username', 'question__title')
+    readonly_fields = ('created_at', 'updated_at')
+    ordering = ('-updated_at',)
 
 
 @admin.register(Submission)

@@ -130,7 +130,7 @@
 
     <div id="leftPanel" class="flex flex-col min-w-[200px] rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)] bg-white/88 backdrop-blur-xl" style="width: 60%;">
         <div id="editorTop" class="flex flex-1 overflow-hidden border-r border-slate-100 bg-white">
-            <aside id="fileExplorer" class="hidden w-64 shrink-0 border-r border-slate-100 bg-[linear-gradient(180deg,_rgba(248,250,252,0.96),_rgba(241,245,249,0.92))] md:flex md:flex-col">
+            <aside id="fileExplorer" class="flex w-64 shrink-0 flex-col border-r border-slate-100 bg-[linear-gradient(180deg,_rgba(248,250,252,0.96),_rgba(241,245,249,0.92))]">
                 <div class="border-b border-slate-100 px-4 py-4">
                     <div class="flex items-center justify-between">
                         <div>
@@ -158,15 +158,24 @@
                 <div id="fileList" class="flex-1 overflow-y-auto p-3"></div>
             </aside>
             <div class="relative flex-1 overflow-hidden bg-white">
-                <div class="flex items-center justify-between border-b border-slate-100 bg-[linear-gradient(180deg,_rgba(248,250,252,0.9),_rgba(255,255,255,0.96))] px-4 py-3">
-                    <div>
+                <div class="flex items-center justify-between gap-3 border-b border-slate-100 bg-[linear-gradient(180deg,_rgba(248,250,252,0.9),_rgba(255,255,255,0.96))] px-4 py-3">
+                    <div class="min-w-0">
                         <p class="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Editor</p>
                         <div class="mt-1 flex items-center gap-2">
-                            <p id="activeFileLabel" class="text-sm font-black text-slate-800">main.py</p>
+                            <p id="activeFileLabel" class="truncate text-sm font-black text-slate-800">main.py</p>
                             <span id="entryFileBadge" class="hidden rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-700">Entry File</span>
                         </div>
                     </div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                        <button id="toggleFilesViewBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            Files
+                        </button>
+                        <button id="toggleInputViewBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            Input
+                        </button>
+                        <button id="toggleOutputViewBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            Output
+                        </button>
                         <button id="setEntryFileBtn" type="button" class="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 shadow-sm transition hover:bg-emerald-50">
                             Set Entry
                         </button>
@@ -820,11 +829,31 @@ const gutterH = document.getElementById('gutterH');
 const editorTop = document.getElementById('editorTop');
 const inputBottom = document.getElementById('inputBottom');
 const gutterV = document.getElementById('gutterV');
+const fileExplorerEl = document.getElementById('fileExplorer');
+const toggleFilesViewBtn = document.getElementById('toggleFilesViewBtn');
+const toggleInputViewBtn = document.getElementById('toggleInputViewBtn');
+const toggleOutputViewBtn = document.getElementById('toggleOutputViewBtn');
 const PANEL_WIDTH_STORAGE_KEYS = {
     practice: 'vortex_left_panel_width_practice',
     exam: 'vortex_left_panel_width_exam',
 };
+const PANEL_VISIBILITY_STORAGE_KEYS = {
+    files: 'vortex_panel_files_visible',
+    input: 'vortex_panel_input_visible',
+    output: 'vortex_panel_output_visible',
+};
 let isResizingH = false; let isResizingV = false;
+let areFilesVisible = localStorage.getItem(PANEL_VISIBILITY_STORAGE_KEYS.files) !== '0';
+let isInputVisible = localStorage.getItem(PANEL_VISIBILITY_STORAGE_KEYS.input) !== '0';
+let isOutputVisible = localStorage.getItem(PANEL_VISIBILITY_STORAGE_KEYS.output) !== '0';
+
+function setToggleButtonState(button, visible, labels) {
+    if (!button) return;
+    button.innerText = visible ? labels.visible : labels.hidden;
+    button.className = visible
+        ? 'rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-100'
+        : 'rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50';
+}
 
 function getPanelWidthStorageKey(mode = currentMode) {
     return PANEL_WIDTH_STORAGE_KEYS[mode] || PANEL_WIDTH_STORAGE_KEYS.practice;
@@ -848,9 +877,39 @@ function persistLeftPanelWidth() {
 
 function applyWorkspacePanelLayout(mode) {
     const fallbackWidth = mode === 'exam' ? 52 : 60;
-    leftPanel.style.width = `${getSavedLeftPanelWidth(mode, fallbackWidth)}%`;
+    leftPanel.style.width = isOutputVisible ? `${getSavedLeftPanelWidth(mode, fallbackWidth)}%` : '100%';
     leftPanel.style.order = mode === 'exam' ? '2' : '1';
     rightPanel.style.order = mode === 'exam' ? '1' : '2';
+}
+
+function setFilesPanelVisibility(visible, persist = true) {
+    areFilesVisible = visible;
+    fileExplorerEl.classList.toggle('hidden', !visible);
+    if (persist) {
+        localStorage.setItem(PANEL_VISIBILITY_STORAGE_KEYS.files, visible ? '1' : '0');
+    }
+    setToggleButtonState(toggleFilesViewBtn, visible, { visible: 'Files On', hidden: 'Files Off' });
+}
+
+function setInputPanelVisibility(visible, persist = true) {
+    isInputVisible = visible;
+    inputBottom.classList.toggle('hidden', !visible);
+    gutterV.classList.toggle('hidden', !visible);
+    if (persist) {
+        localStorage.setItem(PANEL_VISIBILITY_STORAGE_KEYS.input, visible ? '1' : '0');
+    }
+    setToggleButtonState(toggleInputViewBtn, visible, { visible: 'Input On', hidden: 'Input Off' });
+}
+
+function setOutputPanelVisibility(visible, persist = true) {
+    isOutputVisible = visible;
+    rightPanel.classList.toggle('hidden', !visible);
+    gutterH.classList.toggle('hidden', !visible);
+    applyWorkspacePanelLayout(currentMode);
+    if (persist) {
+        localStorage.setItem(PANEL_VISIBILITY_STORAGE_KEYS.output, visible ? '1' : '0');
+    }
+    setToggleButtonState(toggleOutputViewBtn, visible, { visible: 'Output On', hidden: 'Output Off' });
 }
 
 gutterH.addEventListener('mousedown', () => { isResizingH = true; gutterH.classList.add('active'); document.body.classList.add('resizing'); });
@@ -879,6 +938,13 @@ document.addEventListener('mouseup', () => {
     document.body.classList.remove('resizing');
 });
 applyWorkspacePanelLayout('practice');
+setFilesPanelVisibility(areFilesVisible, false);
+setInputPanelVisibility(isInputVisible, false);
+setOutputPanelVisibility(isOutputVisible, false);
+
+toggleFilesViewBtn.onclick = () => setFilesPanelVisibility(!areFilesVisible);
+toggleInputViewBtn.onclick = () => setInputPanelVisibility(!isInputVisible);
+toggleOutputViewBtn.onclick = () => setOutputPanelVisibility(!isOutputVisible);
 
 /* -------------------------
    Utility: escape HTML
@@ -1165,6 +1231,8 @@ if (socket) {
    Persistence & autosave
    ------------------------- */
 let savedCode = JSON.parse(localStorage.getItem('vortex_saved_code') || '{}');
+let snapshotSyncInFlight = false;
+let lastSyncedExamSnapshotSignature = null;
 
 function persistCurrentCode() {
     if (!activeExamQuestionId || !activeExamRoomId) return;
@@ -1179,8 +1247,51 @@ function persistCurrentCode() {
         ts: Date.now()
     };
     try { localStorage.setItem('vortex_saved_code', JSON.stringify(savedCode)); } catch (e) { }
+    syncActiveExamSnapshot();
 }
 setInterval(persistCurrentCode, 2000);
+
+function buildActiveExamSnapshotPayload() {
+    if (!activeExamRoomId || !activeExamQuestionId || currentMode !== 'exam' || !isExamActive || isDisqualified) {
+        return null;
+    }
+
+    const workspacePayload = getWorkspacePayload();
+    return {
+        room_id: activeExamRoomId,
+        question_id: activeExamQuestionId,
+        code: workspacePayload.code,
+        files: workspacePayload.files,
+        entry_file: workspacePayload.entry_file,
+        language: document.getElementById('language').value,
+    };
+}
+
+async function syncActiveExamSnapshot(force = false) {
+    const payload = buildActiveExamSnapshotPayload();
+    if (!payload || snapshotSyncInFlight) return;
+
+    const nextSignature = JSON.stringify(payload);
+    if (!force && nextSignature === lastSyncedExamSnapshotSignature) {
+        return;
+    }
+
+    snapshotSyncInFlight = true;
+    try {
+        const res = await fetch(`/api/rooms/${payload.room_id}/questions/${payload.question_id}/snapshot/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
+            body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+            lastSyncedExamSnapshotSignature = nextSignature;
+        }
+    } catch (err) {
+    } finally {
+        snapshotSyncInFlight = false;
+    }
+}
 
 function restoreSavedCode(roomId, qId) {
     const key = `${roomId}_${qId}`;
@@ -1221,6 +1332,8 @@ function clearExamSession() {
     clearAllSubmissionTracking();
     lastExamStateSignature = null;
     examStateRefreshInFlight = false;
+    lastSyncedExamSnapshotSignature = null;
+    snapshotSyncInFlight = false;
 }
 
 function getExamStateSignature(data) {
@@ -1546,6 +1659,7 @@ submitBtnEl.onclick = async (e) => {
 
     try {
         const workspacePayload = getWorkspacePayload();
+        await syncActiveExamSnapshot(true);
         const res = await fetch('/api/submissions/submit/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },
@@ -1629,17 +1743,20 @@ function resetTabClasses() {
 }
 
 tabConsole.onclick = () => {
+    if (!isOutputVisible) setOutputPanelVisibility(true);
     resetTabClasses();
     tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
     terminalEl.classList.remove('hidden'); historyPanel.classList.add('hidden'); examPanel.classList.add('hidden');
 };
 tabHistory.onclick = () => {
+    if (!isOutputVisible) setOutputPanelVisibility(true);
     resetTabClasses();
     tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
     historyPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); examPanel.classList.add('hidden'); fetchHistory();
 };
 tabExam.onclick = () => {
     if (!isExamActive) return;
+    if (!isOutputVisible) setOutputPanelVisibility(true);
     resetTabClasses();
     tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-purple-600 border-b-2 border-purple-600 uppercase tracking-widest bg-white focus:outline-none";
     examPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); historyPanel.classList.add('hidden');
@@ -1938,6 +2055,7 @@ function checkExamCompletion() {
 }
 
 window.safeExitRoom = () => {
+    syncActiveExamSnapshot(true);
     document.getElementById('timeUpModal').classList.add('hidden');
     document.getElementById('disqualifiedModal').classList.add('hidden');
     document.getElementById('kickedModal').classList.add('hidden');
@@ -2086,6 +2204,7 @@ window.setActiveQuestion = (qId, roomId, options = {}) => {
         resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang] || '');
     }
 
+    syncActiveExamSnapshot(true);
     refreshExamActionState();
     if (shouldFocusExamTab) {
         tabExam.click();
@@ -2132,6 +2251,7 @@ window.addEventListener('focus', () => {
 });
 
 window.addEventListener('pagehide', () => {
+    syncActiveExamSnapshot(true);
     handleExamFocusLoss();
 });
 
@@ -2218,9 +2338,11 @@ function switchToPractice() {
     document.getElementById('runBtn').disabled = false;
     document.getElementById('workspaceShell').classList.remove('exam-active');
     applyWorkspacePanelLayout('practice');
-    document.getElementById('inputBottom').classList.remove('hidden');
     document.getElementById('inputBottomLabel').innerText = 'Standard Input (stdin)';
     document.getElementById('customInput').placeholder = 'Enter custom test cases here...';
+    setInputPanelVisibility(isInputVisible, false);
+    setFilesPanelVisibility(areFilesVisible, false);
+    setOutputPanelVisibility(isOutputVisible, false);
     
     document.getElementById('tab-exam').classList.add('hidden');
     
@@ -2235,7 +2357,11 @@ function switchToExam() {
     isExamActive = true;
     document.getElementById('workspaceShell').classList.add('exam-active');
     applyWorkspacePanelLayout('exam');
-    document.getElementById('inputBottom').classList.add('hidden');
+    document.getElementById('inputBottomLabel').innerText = 'Custom Input / Scratchpad';
+    document.getElementById('customInput').placeholder = 'Use visible testcase input, custom scratch input, or paste notes here...';
+    setInputPanelVisibility(isInputVisible, false);
+    setFilesPanelVisibility(areFilesVisible, false);
+    setOutputPanelVisibility(isOutputVisible, false);
 }
 
 /* -------------------------

@@ -22,7 +22,7 @@ from kafka import KafkaProducer
 from rest_framework import serializers
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, Submission, UserProfile
+from .models import ExamEvent, ExamQuestion, ExamRoom, ExamWorkspaceSnapshot, RoomParticipant, Submission, UserProfile
 from .serializers import (
     ExamEventSerializer,
     ExamQuestionSerializer,
@@ -188,6 +188,21 @@ def participant_is_active(participant, now=None):
 
     now = now or timezone.now()
     return (now - participant.last_presence_at).total_seconds() <= PARTICIPANT_ACTIVE_WINDOW_SECONDS
+
+
+def upsert_workspace_snapshot(*, room, student, question, language, code, files, entry_file):
+    snapshot, _ = ExamWorkspaceSnapshot.objects.update_or_create(
+        room=room,
+        student=student,
+        question=question,
+        defaults={
+            'language': language,
+            'code': code,
+            'files': files,
+            'entry_file': entry_file,
+        },
+    )
+    return snapshot
 
 
 def get_default_entry_file(language):
@@ -730,7 +745,7 @@ class RoomParticipantListView(APIView):
 
     def get(self, request, room_id):
         room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
-        participants = RoomParticipant.objects.filter(room=room).select_related('student').order_by('student__username')
+        participants = RoomParticipant.objects.filter(room=room).select_related('student').prefetch_related('assigned_questions').order_by('student__username')
         now = timezone.now()
 
         data = []
@@ -746,6 +761,10 @@ class RoomParticipantListView(APIView):
                 "access_locked_at": p.access_locked_at.isoformat() if p.access_locked_at else None,
                 "is_active": is_active,
                 "last_presence_at": p.last_presence_at.isoformat() if p.last_presence_at else None,
+                "assigned_questions": [
+                    {"id": question.id, "title": question.title}
+                    for question in p.assigned_questions.all()
+                ],
             })
         return Response(data)
 
@@ -777,6 +796,74 @@ class RoomSubmissionsListView(APIView):
                 "total_testcases": sub.total_testcases,
             })
         return Response(data)
+
+
+class RoomWorkspaceSnapshotListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, room_id):
+        room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
+        snapshots = ExamWorkspaceSnapshot.objects.filter(room=room).select_related('student', 'question').order_by('-updated_at')
+
+        data = []
+        for snapshot in snapshots:
+            data.append({
+                "id": snapshot.id,
+                "student_id": snapshot.student_id,
+                "student_name": snapshot.student.username,
+                "question_id": snapshot.question_id,
+                "question_title": snapshot.question.title,
+                "language": snapshot.language,
+                "code": snapshot.code,
+                "files": snapshot.files,
+                "entry_file": snapshot.entry_file,
+                "updated_at": snapshot.updated_at.isoformat() if snapshot.updated_at else None,
+                "source": "snapshot",
+            })
+        return Response(data)
+
+
+class StudentWorkspaceSnapshotView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, room_id, question_id):
+        participant = get_object_or_404(
+            RoomParticipant.objects.select_related('room').prefetch_related('assigned_questions'),
+            room_id=room_id,
+            student=request.user,
+        )
+
+        if participant.access_locked:
+            return Response({'error': 'Your access to this exam room has been locked.'}, status=status.HTTP_403_FORBIDDEN)
+
+        question = get_object_or_404(ExamQuestion, id=question_id, room_id=room_id)
+        if not participant.assigned_questions.filter(id=question.id).exists():
+            return Response({'error': 'This question is not assigned to you for this exam.'}, status=status.HTTP_403_FORBIDDEN)
+
+        normalized_files, resolved_entry_file, primary_code = normalize_submission_files(
+            request.data.get('language'),
+            request.data.get('code', ''),
+            request.data.get('files'),
+            request.data.get('entry_file') or '',
+        )
+
+        snapshot = upsert_workspace_snapshot(
+            room=participant.room,
+            student=request.user,
+            question=question,
+            language=request.data.get('language') or 'python',
+            code=primary_code,
+            files=normalized_files,
+            entry_file=resolved_entry_file,
+        )
+        mark_participant_present(participant)
+        return Response(
+            {
+                'id': snapshot.id,
+                'updated_at': snapshot.updated_at.isoformat() if snapshot.updated_at else None,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 class RoomQuestionDeleteView(APIView):
     permission_classes = [IsAuthenticated]
@@ -1159,6 +1246,16 @@ class SubmissionCreateView(generics.CreateAPIView):
                 )
 
         SUBMISSIONS_RECEIVED_TOTAL.labels(language=submission.language, mode=submission_mode).inc()
+        if participant and question:
+            upsert_workspace_snapshot(
+                room=participant.room,
+                student=self.request.user,
+                question=question,
+                language=submission.language,
+                code=submission.code,
+                files=submission.files,
+                entry_file=submission.entry_file,
+            )
         record_exam_event(
             event_type='submission.received',
             message=f'Submission {submission.id} received for {submission.language}.',

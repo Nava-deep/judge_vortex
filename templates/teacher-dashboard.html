@@ -321,7 +321,9 @@
         let editingQuestionId = null;
         let roomRefreshInFlight = false;
         const roomQuestionBank = new Map();
+        const teacherParticipantLookup = new Map();
         const teacherStudentSubmissionLookup = new Map();
+        const teacherWorkspaceSnapshotLookup = new Map();
         let activeSubmissionQuestions = [];
         let activeSubmissionQuestionKey = null;
         let activeSubmissionFiles = [];
@@ -352,6 +354,10 @@
             }
 
             return fallbackMessage;
+        }
+
+        function normalizeStudentLookupKey(value) {
+            return encodeURIComponent(String(value === undefined || value === null ? '' : value));
         }
 
         function toDateTimeLocalValue(dateStr) {
@@ -580,6 +586,7 @@
                     fetchQuestions(targetRoomId),
                     fetchParticipants(targetRoomId),
                     fetchSubmissions(targetRoomId),
+                    fetchWorkspaceSnapshots(targetRoomId),
                 ];
 
                 if (options.refreshRooms === true) {
@@ -680,6 +687,7 @@
                 fetchQuestions(room.id),
                 fetchParticipants(room.id),
                 fetchSubmissions(room.id),
+                fetchWorkspaceSnapshots(room.id),
             ]);
             fetchRooms({ preserveSelection: true });
         }
@@ -910,6 +918,7 @@
                 if (Number(currentRoomId || 0) !== targetRoomId) return;
                 
                 document.getElementById('studentCount').innerText = students.filter((student) => student.is_active).length;
+                teacherParticipantLookup.clear();
                 
                 const tbody = document.getElementById('participantsTableBody');
                 tbody.innerHTML = '';
@@ -921,6 +930,7 @@
 
                 students.forEach(student => {
                     const studentId = student.id || student.user_id || student.student_id;
+                    const studentLookupKey = normalizeStudentLookupKey(studentId || student.username || student.student_name || 'unknown');
                     const studentName = student.username || student.student_name || 'Unknown';
                     const isBlocked = Boolean(student.access_locked);
                     const statusLabel = isBlocked ? 'Blocked' : 'Active';
@@ -930,6 +940,11 @@
                     const statusMeta = isBlocked
                         ? (student.access_locked_at ? `Blocked ${new Date(student.access_locked_at).toLocaleString()}` : 'Blocked')
                         : (student.last_presence_at ? `Seen ${new Date(student.last_presence_at).toLocaleTimeString()}` : 'In room');
+                    teacherParticipantLookup.set(studentLookupKey, {
+                        studentId,
+                        studentName,
+                        assignedQuestions: Array.isArray(student.assigned_questions) ? student.assigned_questions : [],
+                    });
                     
                     tbody.innerHTML += `
                         <tr class="hover:bg-gray-50 transition border-b border-gray-50">
@@ -941,6 +956,9 @@
                                 <div class="mt-1 text-[11px] text-slate-400">${escapeHtml(statusMeta)}</div>
                             </td>
                             <td class="px-4 py-3 text-right">
+                                <button onclick="openSubmissionModal('${studentLookupKey}')" class="mr-2 text-xs bg-white text-slate-600 hover:bg-slate-700 border border-slate-200 px-3 py-1 rounded font-bold transition hover:text-white">
+                                    VIEW CODES
+                                </button>
                                 <button onclick="toggleParticipantLock(${studentId}, ${isBlocked ? 'false' : 'true'})" class="text-xs ${isBlocked ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 hover:bg-red-600 border-red-200'} hover:text-white border px-3 py-1 rounded font-bold transition">
                                     ${isBlocked ? 'UNBLOCK' : 'BLOCK'}
                                 </button>
@@ -977,6 +995,35 @@
                 }
             } catch (err) {
                 console.error("Participant access update error", err);
+            }
+        }
+
+        async function fetchWorkspaceSnapshots(roomId) {
+            const targetRoomId = Number(roomId || 0) || null;
+            try {
+                const res = await fetch(`/api/rooms/${targetRoomId}/workspaces/`, { headers: { 'Authorization': `Token ${token}` } });
+                if (!res.ok) return;
+                const snapshots = await res.json();
+                if (Number(currentRoomId || 0) !== targetRoomId) return;
+
+                teacherWorkspaceSnapshotLookup.clear();
+                (Array.isArray(snapshots) ? snapshots : []).forEach((snapshot) => {
+                    const studentLookupKey = normalizeStudentLookupKey(snapshot.student_id || snapshot.student_name || 'unknown');
+                    const questionLookupKey = normalizeQuestionLookupKey(snapshot);
+                    if (!teacherWorkspaceSnapshotLookup.has(studentLookupKey)) {
+                        teacherWorkspaceSnapshotLookup.set(studentLookupKey, new Map());
+                    }
+                    teacherWorkspaceSnapshotLookup.get(studentLookupKey).set(questionLookupKey, {
+                        key: questionLookupKey,
+                        label: getSubmissionQuestionLabel(snapshot),
+                        attemptCount: 1,
+                        submission: snapshot,
+                        latestTime: new Date(snapshot.updated_at || 0).getTime(),
+                        source: 'snapshot',
+                    });
+                });
+            } catch (err) {
+                console.error('fetchWorkspaceSnapshots error', err);
             }
         }
 
@@ -1066,20 +1113,26 @@
             activeSubmissionQuestionKey = selectedQuestion.key;
             activeSubmissionFiles = normalizeSubmissionFiles(submission);
             activeSubmissionFilePath = activeSubmissionFiles[0]?.path || null;
+            const sourceLabel = selectedQuestion.source === 'snapshot'
+                ? 'Live Draft'
+                : selectedQuestion.source === 'submission'
+                    ? 'Submission'
+                    : 'No Code Yet';
 
             document.getElementById('submissionMeta').innerText = `${submission.student_name || 'Student'} • ${selectedQuestion.label} • ${activeSubmissionQuestions.length} question snapshot${activeSubmissionQuestions.length === 1 ? '' : 's'}`;
             document.getElementById('submissionSummary').innerHTML = `
                 <div><span class="font-black text-slate-900">Student:</span> ${escapeHtml(submission.student_name || 'Unknown')}</div>
                 <div><span class="font-black text-slate-900">Question:</span> ${escapeHtml(selectedQuestion.label)}</div>
+                <div><span class="font-black text-slate-900">Source:</span> ${escapeHtml(sourceLabel)}</div>
                 <div><span class="font-black text-slate-900">Verdict:</span> ${escapeHtml(submission.status || 'PENDING')}</div>
                 <div><span class="font-black text-slate-900">Language:</span> ${escapeHtml(submission.language || '-')}</div>
                 <div><span class="font-black text-slate-900">Execution Time:</span> ${escapeHtml(submission.execution_time_ms ?? '-')} ms</div>
                 <div><span class="font-black text-slate-900">Testcases:</span> ${escapeHtml(submission.passed_testcases ?? 0)}/${escapeHtml(submission.total_testcases ?? 0)}</div>
                 <div><span class="font-black text-slate-900">Marks:</span> ${escapeHtml(submission.total_score ?? 0)}</div>
-                <div><span class="font-black text-slate-900">Latest Submit:</span> ${escapeHtml(submission.submitted_at ? new Date(submission.submitted_at).toLocaleString() : '-')}</div>
+                <div><span class="font-black text-slate-900">Latest Activity:</span> ${escapeHtml((submission.updated_at || submission.submitted_at) ? new Date(submission.updated_at || submission.submitted_at).toLocaleString() : '-')}</div>
                 <div><span class="font-black text-slate-900">Saved Snapshots:</span> ${escapeHtml(selectedQuestion.attemptCount)}</div>
             `;
-            document.getElementById('submissionOutputBlock').textContent = submission.output || 'No output';
+            document.getElementById('submissionOutputBlock').textContent = submission.output || (selectedQuestion.source === 'empty' ? 'No code has been synced for this question yet.' : 'No output');
             renderSubmissionQuestionTabs();
             renderSubmissionCodeFile(activeSubmissionFilePath);
         }
@@ -1096,15 +1149,74 @@
         window.renderSubmissionCodeFile = renderSubmissionCodeFile;
         window.openSubmissionQuestion = openSubmissionQuestion;
 
+        function buildStudentQuestionSnapshots(studentKey) {
+            const participant = teacherParticipantLookup.get(String(studentKey));
+            const assignedQuestions = Array.isArray(participant?.assignedQuestions) ? participant.assignedQuestions : [];
+            const submissionSnapshots = teacherStudentSubmissionLookup.get(String(studentKey))?.questionSubmissions || [];
+            const draftSnapshots = teacherWorkspaceSnapshotLookup.get(String(studentKey)) || new Map();
+
+            const merged = new Map();
+            assignedQuestions.forEach((question) => {
+                const key = `question-${question.id}`;
+                merged.set(key, {
+                    key,
+                    label: question.title || `Question ${question.id}`,
+                    attemptCount: 0,
+                    latestTime: 0,
+                    source: 'empty',
+                    submission: {
+                        student_id: participant?.studentId || null,
+                        student_name: participant?.studentName || 'Student',
+                        question_id: question.id,
+                        question_title: question.title || `Question ${question.id}`,
+                        language: '-',
+                        code: 'No code synced for this question yet.',
+                        files: [],
+                        entry_file: '',
+                        output: '',
+                        status: 'NO_CODE_YET',
+                        execution_time_ms: null,
+                        passed_testcases: 0,
+                        total_testcases: 0,
+                        total_score: 0,
+                        submitted_at: null,
+                    },
+                });
+            });
+
+            submissionSnapshots.forEach((entry) => {
+                const existing = merged.get(entry.key);
+                if (!existing || entry.latestTime >= (existing.latestTime || 0)) {
+                    merged.set(entry.key, { ...entry, source: 'submission' });
+                }
+            });
+
+            draftSnapshots.forEach((entry, key) => {
+                const existing = merged.get(key);
+                if (!existing || entry.latestTime >= (existing.latestTime || 0)) {
+                    merged.set(key, { ...entry, source: 'snapshot' });
+                }
+            });
+
+            return Array.from(merged.values()).sort((left, right) => {
+                const leftQuestionId = Number(left.submission?.question_id || String(left.key || '').replace('question-', '')) || 0;
+                const rightQuestionId = Number(right.submission?.question_id || String(right.key || '').replace('question-', '')) || 0;
+                if (leftQuestionId && rightQuestionId && leftQuestionId !== rightQuestionId) {
+                    return leftQuestionId - rightQuestionId;
+                }
+                return left.label.localeCompare(right.label);
+            });
+        }
+
         function openSubmissionModal(studentKey) {
-            const studentSnapshot = teacherStudentSubmissionLookup.get(String(studentKey));
-            if (!studentSnapshot || !Array.isArray(studentSnapshot.questionSubmissions) || studentSnapshot.questionSubmissions.length === 0) {
-                alert('Student code snapshots are not available yet. Refresh the room and try again.');
+            const questionSnapshots = buildStudentQuestionSnapshots(studentKey);
+            if (!Array.isArray(questionSnapshots) || questionSnapshots.length === 0) {
+                alert('Student question data is not available yet. Refresh the room and try again.');
                 return;
             }
 
-            activeSubmissionQuestions = studentSnapshot.questionSubmissions;
-            activeSubmissionQuestionKey = studentSnapshot.questionSubmissions[0].key;
+            activeSubmissionQuestions = questionSnapshots;
+            activeSubmissionQuestionKey = questionSnapshots[0].key;
             openSubmissionQuestion(activeSubmissionQuestionKey);
             document.getElementById('submissionDetailModal').classList.remove('hidden');
         }
@@ -1189,7 +1301,7 @@
                 });
 
                 leaderboard.forEach(student => {
-                    const studentLookupKey = encodeURIComponent(String(student.studentKey));
+                    const studentLookupKey = normalizeStudentLookupKey(student.studentKey);
                     const questionSubmissions = Array.from(student.questionLatestSubmissions.entries())
                         .map(([key, submission]) => ({
                             key,

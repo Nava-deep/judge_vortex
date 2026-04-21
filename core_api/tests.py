@@ -14,7 +14,7 @@ from rest_framework.test import APITestCase
 from . import views as core_views
 from .integrations import ExternalRateLimitResult
 from .judging import build_testcases
-from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, Submission
+from .models import ExamEvent, ExamQuestion, ExamRoom, ExamWorkspaceSnapshot, RoomParticipant, Submission
 from execution_routing import get_submission_topic
 
 
@@ -918,13 +918,22 @@ class TeacherRoomParticipantPresenceTests(APITestCase):
             questions_to_assign=1,
             join_deadline=timezone.now() + timedelta(days=7),
         )
+        self.question = ExamQuestion.objects.create(
+            room=self.room,
+            title='Assigned Snapshot Question',
+            description='Return 1.',
+            testcase_input='1',
+            expected_output='1',
+            total_marks=5,
+        )
 
     def test_participant_feed_only_lists_active_or_blocked_students(self):
-        RoomParticipant.objects.create(
+        active_participant = RoomParticipant.objects.create(
             room=self.room,
             student=self.active_student,
             last_presence_at=timezone.now(),
         )
+        active_participant.assigned_questions.set([self.question])
         RoomParticipant.objects.create(
             room=self.room,
             student=self.stale_student,
@@ -944,6 +953,93 @@ class TeacherRoomParticipantPresenceTests(APITestCase):
         self.assertEqual(set(rows_by_username.keys()), {'student-active', 'student-blocked'})
         self.assertTrue(rows_by_username['student-active']['is_active'])
         self.assertFalse(rows_by_username['student-blocked']['is_active'])
+        self.assertEqual(rows_by_username['student-active']['assigned_questions'][0]['id'], self.question.id)
+
+
+@override_settings(
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'judge-vortex-tests',
+        }
+    },
+    REST_FRAMEWORK={
+        'DEFAULT_AUTHENTICATION_CLASSES': [
+            'rest_framework.authentication.TokenAuthentication',
+        ],
+        'DEFAULT_PERMISSION_CLASSES': [
+            'rest_framework.permissions.IsAuthenticated',
+        ],
+        'DEFAULT_THROTTLE_CLASSES': [],
+    },
+)
+class ExamWorkspaceSnapshotTests(APITestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username='teacher-snapshot', password='pass123')
+        self.student = User.objects.create_user(username='student-snapshot', password='pass123')
+        self.teacher_token = Token.objects.create(user=self.teacher)
+        self.student_token = Token.objects.create(user=self.student)
+        self.room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Snapshot Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=7),
+        )
+        self.question = ExamQuestion.objects.create(
+            room=self.room,
+            title='Live Draft',
+            description='Return 5.',
+            testcase_input='5',
+            expected_output='5',
+            total_marks=5,
+        )
+        self.participant = RoomParticipant.objects.create(room=self.room, student=self.student)
+        self.participant.assigned_questions.set([self.question])
+
+    def test_student_can_sync_workspace_snapshot(self):
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.student_token.key}')
+
+        response = self.client.post(
+            f'/api/rooms/{self.room.id}/questions/{self.question.id}/snapshot/',
+            {
+                'language': 'python',
+                'code': 'from helper import value\nprint(value())',
+                'files': [
+                    {'path': 'main.py', 'content': 'from helper import value\nprint(value())'},
+                    {'path': 'helper.py', 'content': 'def value():\n    return 5'},
+                ],
+                'entry_file': 'main.py',
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        snapshot = ExamWorkspaceSnapshot.objects.get(room=self.room, student=self.student, question=self.question)
+        self.assertEqual(snapshot.entry_file, 'main.py')
+        self.assertEqual(snapshot.language, 'python')
+        self.assertEqual(len(snapshot.files), 2)
+        self.participant.refresh_from_db()
+        self.assertIsNotNone(self.participant.last_presence_at)
+
+    def test_teacher_can_fetch_workspace_snapshots(self):
+        ExamWorkspaceSnapshot.objects.create(
+            room=self.room,
+            student=self.student,
+            question=self.question,
+            language='python',
+            code='print(5)',
+            files=[{'path': 'main.py', 'content': 'print(5)'}],
+            entry_file='main.py',
+        )
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.teacher_token.key}')
+
+        response = self.client.get(f'/api/rooms/{self.room.id}/workspaces/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['student_id'], self.student.id)
+        self.assertEqual(response.data[0]['question_id'], self.question.id)
+        self.assertEqual(response.data[0]['source'], 'snapshot')
 
 
 @override_settings(
