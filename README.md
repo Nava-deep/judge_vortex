@@ -200,7 +200,7 @@ sequenceDiagram
 ### Persistence
 
 **PostgreSQL**
-- stores rooms, questions, participants, submissions, social accounts, and audit events
+- stores rooms, questions, participants, submissions, and audit events
 - keeps exam state durable even if workers restart
 
 ### Queue / Coordination

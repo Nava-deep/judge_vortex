@@ -98,16 +98,6 @@
             <button type="submit" class="w-full bg-gradient-to-r from-blue-600 via-blue-600 to-violet-600 hover:brightness-110 text-white p-3.5 rounded-xl font-bold transition duration-200 shadow-[0_18px_40px_-18px_rgba(59,130,246,0.9)]">
                 Create Account
             </button>
-            <div class="relative py-1">
-                <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-200"></div></div>
-                <div class="relative flex justify-center"><span class="bg-white px-3 text-[10px] font-black uppercase tracking-[0.22em] text-slate-400">Or continue with</span></div>
-            </div>
-            <div class="grid gap-3 sm:grid-cols-2">
-                <div id="googleRegisterSlot" class="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700"></div>
-                <button id="githubRegisterBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-                    GitHub
-                </button>
-            </div>
         </form>
 
         <p class="mt-6 text-center text-sm text-gray-500">
@@ -117,160 +107,7 @@
     </div>
     </div>
 
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script>
-        let socialConfig = null;
-
-        function getRequestedTeacherRole() {
-            return document.getElementById('isTeacher').checked;
-        }
-
-        function completeAuth(data) {
-            localStorage.setItem('vortex_token', data.token);
-            localStorage.setItem('vortex_user_id', data.user_id);
-            localStorage.setItem('vortex_is_teacher', data.is_teacher);
-            if (data.is_teacher) {
-                window.location.href = '/teacher-dashboard/';
-            } else {
-                window.location.href = '/workspace/';
-            }
-        }
-
-        async function readJsonSafe(response) {
-            try {
-                return await response.json();
-            } catch (err) {
-                return {};
-            }
-        }
-
-        async function handleGoogleCredential(response) {
-            const errorMsg = document.getElementById('errorMsg');
-            try {
-                const res = await fetch('/api/social/google/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id_token: response.credential, is_teacher: getRequestedTeacherRole() })
-                });
-                const data = await readJsonSafe(res);
-                if (!res.ok) {
-                    errorMsg.innerText = data.error || 'Google sign-up failed.';
-                    errorMsg.classList.remove('hidden');
-                    return;
-                }
-                completeAuth(data);
-            } catch (err) {
-                errorMsg.innerText = 'Google sign-up failed.';
-                errorMsg.classList.remove('hidden');
-            }
-        }
-
-        async function waitForGoogleIdentity(maxAttempts = 40) {
-            for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-                if (window.google?.accounts?.id) return true;
-                await new Promise((resolve) => setTimeout(resolve, 150));
-            }
-            return false;
-        }
-
-        function initGoogleButton() {
-            const slot = document.getElementById('googleRegisterSlot');
-            if (!slot) return;
-            if (!socialConfig?.enabled?.google || !socialConfig?.google_client_id || !window.google?.accounts?.id) {
-                slot.innerHTML = '<span class="text-xs text-slate-400">Google unavailable</span>';
-                return;
-            }
-
-            slot.innerHTML = '';
-            google.accounts.id.initialize({
-                client_id: socialConfig.google_client_id,
-                callback: handleGoogleCredential,
-                ux_mode: 'popup'
-            });
-            google.accounts.id.renderButton(slot, {
-                theme: 'outline',
-                size: 'large',
-                text: 'continue_with',
-                shape: 'pill',
-                width: slot.offsetWidth || 220
-            });
-        }
-
-        function beginGithubLogin() {
-            const errorMsg = document.getElementById('errorMsg');
-            if (!socialConfig?.enabled?.github || !socialConfig?.github_client_id || !socialConfig?.github_redirect_uri) {
-                errorMsg.innerText = 'GitHub sign-up is not configured yet.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            const state = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-            sessionStorage.setItem('vortex_github_oauth_state', state);
-            const authUrl = new URL('https://github.com/login/oauth/authorize');
-            authUrl.searchParams.set('client_id', socialConfig.github_client_id);
-            authUrl.searchParams.set('redirect_uri', socialConfig.github_redirect_uri.replace('/login/', '/register/'));
-            authUrl.searchParams.set('scope', 'read:user user:email');
-            authUrl.searchParams.set('state', state);
-            window.location.href = authUrl.toString();
-        }
-
-        async function handleGithubCallback() {
-            const params = new URLSearchParams(window.location.search);
-            const code = params.get('code');
-            const state = params.get('state');
-            const savedState = sessionStorage.getItem('vortex_github_oauth_state');
-            if (!code) return;
-
-            const errorMsg = document.getElementById('errorMsg');
-            if (!state || !savedState || state !== savedState) {
-                errorMsg.innerText = 'GitHub sign-up state mismatch. Please try again.';
-                errorMsg.classList.remove('hidden');
-                return;
-            }
-
-            sessionStorage.removeItem('vortex_github_oauth_state');
-
-            try {
-                const redirectUri = (socialConfig?.github_redirect_uri || `${window.location.origin}/login/`).replace('/login/', '/register/');
-                const res = await fetch('/api/social/github/', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        code,
-                        redirect_uri: redirectUri,
-                        is_teacher: getRequestedTeacherRole()
-                    })
-                });
-                const data = await readJsonSafe(res);
-                if (!res.ok) {
-                    errorMsg.innerText = data.error || 'GitHub sign-up failed.';
-                    errorMsg.classList.remove('hidden');
-                    return;
-                }
-                window.history.replaceState({}, document.title, '/register/');
-                completeAuth(data);
-            } catch (err) {
-                errorMsg.innerText = 'GitHub sign-up failed.';
-                errorMsg.classList.remove('hidden');
-            }
-        }
-
-        async function initSocialAuth() {
-            const errorMsg = document.getElementById('errorMsg');
-            try {
-                const res = await fetch('/api/social/config/');
-                socialConfig = await readJsonSafe(res);
-                if (!res.ok) throw new Error('config');
-                const googleReady = await waitForGoogleIdentity();
-                if (googleReady) initGoogleButton();
-                else document.getElementById('googleRegisterSlot').innerHTML = '<span class="text-xs text-slate-400">Google unavailable</span>';
-                await handleGithubCallback();
-            } catch (err) {
-                errorMsg.innerText = 'Social sign-up configuration could not be loaded.';
-                errorMsg.classList.remove('hidden');
-            }
-        }
-
         document.getElementById('togglePasswordBtn').addEventListener('click', () => {
             const passwordEl = document.getElementById('password');
             const isPassword = passwordEl.type === 'password';
@@ -278,14 +115,11 @@
             document.getElementById('togglePasswordBtn').innerText = isPassword ? 'Hide' : 'Show';
         });
 
-        document.getElementById('githubRegisterBtn').addEventListener('click', beginGithubLogin);
-        window.addEventListener('load', initSocialAuth);
-
         document.getElementById('registerForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
-            const isTeacher = document.getElementById('isTeacher').checked; // Grab the checkbox state
+            const isTeacher = document.getElementById('isTeacher').checked;
             const errorMsg = document.getElementById('errorMsg');
 
             try {
@@ -298,12 +132,10 @@
                 const data = await response.json();
 
                 if (response.ok) {
-                    // Save credentials and role
                     localStorage.setItem('vortex_token', data.token);
                     localStorage.setItem('vortex_user_id', data.user_id);
                     localStorage.setItem('vortex_is_teacher', data.is_teacher);
                     
-                    // Route immediately based on role
                     if (data.is_teacher) {
                         window.location.href = '/teacher-dashboard/';
                     } else {

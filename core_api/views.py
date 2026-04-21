@@ -2,13 +2,10 @@ import json
 import os
 import random
 import logging
-import re
-import secrets
 from urllib.parse import urlparse
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.text import slugify
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework import status, generics
@@ -24,9 +21,8 @@ from channels.layers import get_channel_layer
 from kafka import KafkaProducer
 from rest_framework import serializers
 from django.views.decorators.csrf import csrf_exempt
-import requests
 
-from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, SocialAccount, Submission, UserProfile
+from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, Submission, UserProfile
 from .serializers import (
     ExamEventSerializer,
     ExamQuestionSerializer,
@@ -53,6 +49,7 @@ from .judging import (
     get_hidden_testcase_count,
     normalize_judge_output,
 )
+from executor_service.sandbox import execute_prepared, prepare_execution, run_code_in_sandbox
 from execution_routing import get_all_submission_topics, get_submission_topic
 
 logger = logging.getLogger(__name__)
@@ -74,12 +71,6 @@ LANGUAGE_ENTRY_FILES = {
     'typescript': 'main.ts',
     'sql': 'query.sql',
 }
-GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
-GITHUB_CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '').strip()
-GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '').strip()
-GITHUB_REDIRECT_BASE = os.getenv('GITHUB_REDIRECT_BASE', '').strip()
-
-
 class ServiceUnavailable(APIException):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     default_detail = 'Judge Vortex is temporarily unavailable.'
@@ -266,191 +257,256 @@ def normalize_judge_cases_payload(judge_cases_payload):
     return normalized_cases
 
 
-def build_provider_username_candidates(provider, provider_payload):
-    provider = str(provider or '').strip().lower()
-    candidates = []
-    raw_candidates = [
-        provider_payload.get('provider_username'),
-        provider_payload.get('username'),
-        provider_payload.get('login'),
-        provider_payload.get('email', '').split('@')[0] if provider_payload.get('email') else '',
-        provider_payload.get('name'),
-        provider_payload.get('display_name'),
-    ]
+def finalize_submission_result(submission, executor_status, executor_output, execution_time_ms, passed_testcases=None, total_testcases=None):
+    passed_testcases = parse_non_negative_int(
+        passed_testcases,
+        submission.passed_testcases
+    )
+    total_testcases = parse_non_negative_int(
+        total_testcases,
+        submission.total_testcases
+    )
 
-    for raw_value in raw_candidates:
-        cleaned = slugify(str(raw_value or '').strip()).replace('-', '_')
-        cleaned = re.sub(r'[^a-z0-9_]+', '', cleaned.lower())
-        cleaned = cleaned.strip('_')
-        if not cleaned:
-            continue
-        if cleaned[0].isdigit():
-            cleaned = f'{provider}_{cleaned}'
-        candidates.append(cleaned[:24])
+    if total_testcases and passed_testcases > total_testcases:
+        passed_testcases = total_testcases
 
-    provider_prefix = f'{provider}_{provider_payload.get("provider_user_id", "")}'
-    provider_prefix = slugify(provider_prefix).replace('-', '_').strip('_')
-    if provider_prefix:
-        candidates.append(provider_prefix[:24])
+    final_status = executor_status
+    awarded_marks = 0
 
-    candidates.append(f'{provider}_user')
-    # Preserve order while removing duplicates
-    return list(dict.fromkeys([candidate for candidate in candidates if candidate]))
+    if executor_status == "SUCCESS" and submission.question:
+        if passed_testcases or total_testcases:
+            if total_testcases == 0:
+                total_testcases = max(
+                    get_hidden_testcase_count(
+                        submission.question.testcase_input,
+                        submission.question.expected_output
+                    ),
+                    1
+                )
+            if passed_testcases == total_testcases:
+                final_status = "PASSED"
+                awarded_marks = submission.question.total_marks
+            else:
+                final_status = "WRONG_ANSWER"
+                awarded_marks = 0
+        else:
+            expected = normalize_judge_output(submission.question.expected_output)
+            actual = normalize_judge_output(executor_output)
+            total_testcases = max(
+                total_testcases,
+                get_hidden_testcase_count(
+                    submission.question.testcase_input,
+                    submission.question.expected_output
+                ),
+                1
+            )
 
-
-def generate_unique_provider_username(provider, provider_payload):
-    for base_candidate in build_provider_username_candidates(provider, provider_payload):
-        if not User.objects.filter(username=base_candidate).exists():
-            return base_candidate
-
-        for suffix in range(2, 500):
-            candidate = f'{base_candidate[:20]}_{suffix}'
-            if not User.objects.filter(username=candidate).exists():
-                return candidate
-
-    fallback = f'{provider}_{secrets.token_hex(4)}'
-    while User.objects.filter(username=fallback).exists():
-        fallback = f'{provider}_{secrets.token_hex(4)}'
-    return fallback
-
-
-def get_or_create_social_user(provider, provider_payload, is_teacher=False):
-    provider_user_id = str(provider_payload.get('provider_user_id') or '').strip()
-    if not provider_user_id:
-        raise serializers.ValidationError({'error': 'Missing provider user identifier.'})
-
-    social_account = SocialAccount.objects.select_related('user').filter(
-        provider=provider,
-        provider_user_id=provider_user_id,
-    ).first()
-
-    if social_account:
-        user = social_account.user
-        social_account.provider_username = provider_payload.get('provider_username', social_account.provider_username or '')
-        social_account.email = provider_payload.get('email', social_account.email or '')
-        social_account.avatar_url = provider_payload.get('avatar_url', social_account.avatar_url or '')
-        social_account.extra_data = provider_payload
-        social_account.save(update_fields=['provider_username', 'email', 'avatar_url', 'extra_data'])
-        profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'is_teacher': is_teacher})
-        return user, profile, False
-
-    email = str(provider_payload.get('email') or '').strip().lower()
-    user = None
-    if email:
-        user = User.objects.filter(email__iexact=email).first()
-
-    created = False
-    if user is None:
-        username = generate_unique_provider_username(provider, provider_payload)
-        user = User.objects.create_user(
-            username=username,
-            email=email or '',
-            password=secrets.token_urlsafe(24),
+            if expected == actual:
+                passed_testcases = total_testcases
+                final_status = "PASSED"
+                awarded_marks = submission.question.total_marks
+            else:
+                passed_testcases = 0
+                final_status = "WRONG_ANSWER"
+                awarded_marks = 0
+    elif submission.question and total_testcases == 0:
+        total_testcases = get_hidden_testcase_count(
+            submission.question.testcase_input,
+            submission.question.expected_output
         )
-        created = True
 
-    profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'is_teacher': is_teacher})
+    submission.status = final_status
+    submission.output = executor_output
+    submission.awarded_marks = awarded_marks
+    submission.passed_testcases = passed_testcases
+    submission.total_testcases = total_testcases
+    submission.execution_time_ms = execution_time_ms or submission.execution_time_ms
+    submission.save()
+    SUBMISSION_VERDICTS_TOTAL.labels(language=submission.language, status=submission.status).inc()
+    if submission.submitted_at:
+        latency_seconds = max((timezone.now() - submission.submitted_at).total_seconds(), 0.0)
+        SUBMISSION_END_TO_END_SECONDS.labels(language=submission.language, status=submission.status).observe(latency_seconds)
 
-    SocialAccount.objects.create(
-        user=user,
-        provider=provider,
-        provider_user_id=provider_user_id,
-        provider_username=provider_payload.get('provider_username', ''),
-        email=email,
-        avatar_url=provider_payload.get('avatar_url', ''),
-        extra_data=provider_payload,
-    )
+    severity = 'info'
+    if submission.status in {'WRONG_ANSWER', 'TLE', 'MLE', 'RUNTIME_ERROR'}:
+        severity = 'warning'
+    if submission.status in {'COMPILATION_ERROR', 'SYSTEM_ERROR'}:
+        severity = 'error'
 
-    return user, profile, created
-
-
-def get_social_auth_config(request):
-    redirect_base = GITHUB_REDIRECT_BASE or (request.build_absolute_uri('/login/').rstrip('/') if request is not None else '')
-    return {
-        'google_client_id': GOOGLE_CLIENT_ID,
-        'github_client_id': GITHUB_CLIENT_ID,
-        'github_redirect_uri': redirect_base,
-        'enabled': {
-            'google': bool(GOOGLE_CLIENT_ID),
-            'github': bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET),
-        }
-    }
-
-
-def verify_google_identity_token(id_token):
-    if not GOOGLE_CLIENT_ID:
-        raise serializers.ValidationError({'error': 'Google sign-in is not configured.'})
-
-    response = requests.get(
-        'https://oauth2.googleapis.com/tokeninfo',
-        params={'id_token': id_token},
-        timeout=8,
-    )
-    payload = response.json() if response.ok else {}
-    if not response.ok:
-        raise serializers.ValidationError({'error': payload.get('error_description') or 'Google token verification failed.'})
-
-    aud = str(payload.get('aud') or '').strip()
-    if aud != GOOGLE_CLIENT_ID:
-        raise serializers.ValidationError({'error': 'Google token audience mismatch.'})
-
-    return {
-        'provider_user_id': str(payload.get('sub') or ''),
-        'provider_username': payload.get('email', '').split('@')[0] if payload.get('email') else '',
-        'email': payload.get('email', ''),
-        'name': payload.get('name', ''),
-        'avatar_url': payload.get('picture', ''),
-        'email_verified': str(payload.get('email_verified', '')).lower() == 'true',
-    }
-
-
-def exchange_github_code_for_profile(code, redirect_uri):
-    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
-        raise serializers.ValidationError({'error': 'GitHub sign-in is not configured.'})
-
-    token_response = requests.post(
-        'https://github.com/login/oauth/access_token',
-        headers={'Accept': 'application/json'},
-        data={
-            'client_id': GITHUB_CLIENT_ID,
-            'client_secret': GITHUB_CLIENT_SECRET,
-            'code': code,
-            'redirect_uri': redirect_uri or GITHUB_REDIRECT_BASE or '',
+    record_exam_event(
+        event_type='submission.updated',
+        message=f'Submission {submission.id} finished with {submission.status}.',
+        room=submission.room,
+        question=submission.question,
+        submission=submission,
+        actor=submission.user,
+        participant=submission.user,
+        severity=severity,
+        metadata={
+            'executor_status': executor_status,
+            'awarded_marks': submission.awarded_marks,
+            'passed_testcases': submission.passed_testcases,
+            'total_testcases': submission.total_testcases,
+            'execution_time_ms': submission.execution_time_ms,
         },
-        timeout=8,
     )
-    token_payload = token_response.json() if token_response.ok else {}
-    access_token = token_payload.get('access_token')
-    if not access_token:
-        raise serializers.ValidationError({'error': token_payload.get('error_description') or 'GitHub token exchange failed.'})
+    log_submission_lifecycle(
+        'submission.updated',
+        submission_id=submission.id,
+        room_id=submission.room_id,
+        question_id=submission.question_id,
+        language=submission.language,
+        executor_status=executor_status,
+        final_status=submission.status,
+        execution_time_ms=submission.execution_time_ms,
+        passed_testcases=submission.passed_testcases,
+        total_testcases=submission.total_testcases,
+    )
+    detect_suspicious_result_patterns(submission)
 
-    headers = {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': f'Bearer {access_token}',
-        'X-GitHub-Api-Version': '2022-11-28',
-    }
-    user_response = requests.get('https://api.github.com/user', headers=headers, timeout=8)
-    user_payload = user_response.json() if user_response.ok else {}
-    if not user_response.ok:
-        raise serializers.ValidationError({'error': user_payload.get('message') or 'GitHub profile lookup failed.'})
+    emit_user_event(submission.user.id, 'submission.update', {
+        'submission_id': submission.id,
+        'room_id': submission.room_id,
+        'question_id': submission.question_id,
+        'status': submission.status,
+        'output': submission.output,
+        'execution_time': submission.execution_time_ms,
+        'awarded_marks': submission.awarded_marks,
+        'passed_testcases': submission.passed_testcases,
+        'total_testcases': submission.total_testcases,
+    })
 
-    email = user_payload.get('email') or ''
-    if not email:
-        emails_response = requests.get('https://api.github.com/user/emails', headers=headers, timeout=8)
-        if emails_response.ok:
-            emails_payload = emails_response.json()
-            primary_email = next((item.get('email') for item in emails_payload if item.get('primary') and item.get('verified')), None)
-            fallback_email = next((item.get('email') for item in emails_payload if item.get('verified')), None)
-            email = primary_email or fallback_email or ''
+    return submission
 
-    return {
-        'provider_user_id': str(user_payload.get('id') or ''),
-        'provider_username': user_payload.get('login', ''),
-        'email': email,
-        'name': user_payload.get('name', ''),
-        'avatar_url': user_payload.get('avatar_url', ''),
-        'profile_url': user_payload.get('html_url', ''),
-    }
+
+def execute_submission_inline(submission, user_input, judge_cases, time_limit_ms):
+    if judge_cases:
+        total_testcases = len(judge_cases)
+        passed_testcases = 0
+        total_time_ms = 0
+        last_output = ""
+
+        prepared = async_to_sync(prepare_execution)(
+            submission.code,
+            submission.language,
+            judge_cases[0].get('input', ''),
+            files=submission.files,
+            entry_file=submission.entry_file,
+        )
+
+        if isinstance(prepared, dict):
+            return finalize_submission_result(
+                submission,
+                prepared['status'],
+                prepared['output'],
+                prepared.get('time_ms', 0),
+                passed_testcases=0,
+                total_testcases=total_testcases,
+            )
+
+        try:
+            for case in judge_cases:
+                result = async_to_sync(execute_prepared)(
+                    prepared,
+                    case.get('input', ''),
+                    time_limit_ms,
+                )
+                total_time_ms += int(result.get('time_ms') or 0)
+                last_output = result.get('output', '') or ''
+
+                if result['status'] == 'TLE':
+                    return finalize_submission_result(
+                        submission,
+                        'TLE',
+                        'Time Limit Exceeded',
+                        total_time_ms or time_limit_ms,
+                        passed_testcases=passed_testcases,
+                        total_testcases=total_testcases,
+                    )
+
+                if result['status'] in ['MEMORY_LIMIT_EXCEEDED', 'MLE']:
+                    return finalize_submission_result(
+                        submission,
+                        'MLE',
+                        result['output'],
+                        total_time_ms,
+                        passed_testcases=passed_testcases,
+                        total_testcases=total_testcases,
+                    )
+
+                if result['status'] in ['RUNTIME_ERROR', 'COMPILATION_ERROR', 'SYSTEM_ERROR']:
+                    return finalize_submission_result(
+                        submission,
+                        result['status'],
+                        result['output'],
+                        total_time_ms,
+                        passed_testcases=passed_testcases,
+                        total_testcases=total_testcases,
+                    )
+
+                actual_output = normalize_judge_output(result['output'])
+                expected_output = normalize_judge_output(case.get('expected_output', ''))
+                if actual_output == expected_output:
+                    passed_testcases += 1
+                    continue
+
+                return finalize_submission_result(
+                    submission,
+                    'SUCCESS',
+                    result['output'],
+                    total_time_ms,
+                    passed_testcases=passed_testcases,
+                    total_testcases=total_testcases,
+                )
+
+            return finalize_submission_result(
+                submission,
+                'SUCCESS',
+                last_output,
+                total_time_ms,
+                passed_testcases=passed_testcases,
+                total_testcases=total_testcases,
+            )
+        finally:
+            prepared.cleanup()
+
+    result = async_to_sync(run_code_in_sandbox)(
+        submission.code,
+        submission.language,
+        user_input,
+        time_limit_ms,
+        files=submission.files,
+        entry_file=submission.entry_file,
+    )
+
+    if result['status'] == 'TLE':
+        return finalize_submission_result(
+            submission,
+            'TLE',
+            'Time Limit Exceeded',
+            result.get('time_ms') or time_limit_ms,
+        )
+    if result['status'] in ['MEMORY_LIMIT_EXCEEDED', 'MLE']:
+        return finalize_submission_result(
+            submission,
+            'MLE',
+            result['output'],
+            result.get('time_ms', 0),
+        )
+    if result['status'] in ['RUNTIME_ERROR', 'COMPILATION_ERROR', 'SYSTEM_ERROR']:
+        return finalize_submission_result(
+            submission,
+            result['status'],
+            result['output'],
+            result.get('time_ms', 0),
+        )
+    return finalize_submission_result(
+        submission,
+        'SUCCESS',
+        result['output'],
+        result.get('time_ms', 0),
+    )
+
 
 # ==========================================
 # 1. AUTHENTICATION ENDPOINTS
@@ -513,63 +569,6 @@ def login_view(request):
 def logout_view(request):
     request.user.auth_token.delete()
     return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
-
-
-@api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def social_auth_config_view(request):
-    return Response(get_social_auth_config(request), status=status.HTTP_200_OK)
-
-
-@csrf_exempt
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def google_social_login_view(request):
-    id_token = request.data.get('id_token')
-    is_teacher = parse_bool(request.data.get('is_teacher'), False)
-    if not id_token:
-        return Response({'error': 'Google identity token is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    provider_payload = verify_google_identity_token(id_token)
-    user, profile, _ = get_or_create_social_user('google', provider_payload, is_teacher=is_teacher)
-    token, _ = Token.objects.get_or_create(user=user)
-
-    return Response({
-        'token': token.key,
-        'user_id': user.id,
-        'username': user.username,
-        'is_teacher': profile.is_teacher,
-        'provider': 'google',
-        'message': 'Google login successful',
-    }, status=status.HTTP_200_OK)
-
-
-@csrf_exempt
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def github_social_login_view(request):
-    code = request.data.get('code')
-    redirect_uri = request.data.get('redirect_uri')
-    is_teacher = parse_bool(request.data.get('is_teacher'), False)
-
-    if not code:
-        return Response({'error': 'GitHub authorization code is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    provider_payload = exchange_github_code_for_profile(code, redirect_uri)
-    user, profile, _ = get_or_create_social_user('github', provider_payload, is_teacher=is_teacher)
-    token, _ = Token.objects.get_or_create(user=user)
-
-    return Response({
-        'token': token.key,
-        'user_id': user.id,
-        'username': user.username,
-        'is_teacher': profile.is_teacher,
-        'provider': 'github',
-        'message': 'GitHub login successful',
-    }, status=status.HTTP_200_OK)
 
 
 # ==========================================
@@ -1026,6 +1025,7 @@ class SubmissionCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         user_custom_input = self.request.data.get('user_input', "")
+        requested_time_limit_ms = parse_non_negative_int(self.request.data.get('time_limit_ms', 10000), 10000) or 10000
         room_id = self.request.data.get('room_id') or None
         question_id = self.request.data.get('question_id') or None
         incoming_files = self.request.data.get('files')
@@ -1143,9 +1143,18 @@ class SubmissionCreateView(generics.CreateAPIView):
         )
         detect_suspicious_submission_patterns(submission)
         
-        # Push to Kafka for Native Execution
+        should_execute_inline = question_id is None
+
+        if should_execute_inline:
+            execute_submission_inline(
+                submission,
+                user_custom_input,
+                judge_cases,
+                requested_time_limit_ms,
+            )
+            return
+
         producer = get_kafka_producer()
-        
         message = {
             'submission_id': submission.id,
             'correlation_id': f'sub-{submission.id}',
@@ -1155,7 +1164,7 @@ class SubmissionCreateView(generics.CreateAPIView):
             'entry_file': submission.entry_file,
             'language': submission.language,
             'user_input': user_custom_input,
-            'time_limit_ms': self.request.data.get('time_limit_ms', 10000), 
+            'time_limit_ms': requested_time_limit_ms,
         }
         if judge_cases:
             message['judge_cases'] = judge_cases
@@ -1223,124 +1232,14 @@ class SubmissionUpdateView(APIView):
             executor_output = request.data.get('output', submission.output)
             raw_passed_testcases = request.data.get('passed_testcases')
             raw_total_testcases = request.data.get('total_testcases')
-            passed_testcases = parse_non_negative_int(
-                raw_passed_testcases,
-                submission.passed_testcases
+            finalize_submission_result(
+                submission,
+                executor_status,
+                executor_output,
+                parse_non_negative_int(request.data.get('execution_time_ms'), submission.execution_time_ms),
+                passed_testcases=raw_passed_testcases,
+                total_testcases=raw_total_testcases,
             )
-            total_testcases = parse_non_negative_int(
-                raw_total_testcases,
-                submission.total_testcases
-            )
-            if total_testcases and passed_testcases > total_testcases:
-                passed_testcases = total_testcases
-            
-            final_status = executor_status
-            awarded_marks = 0
-            
-            if executor_status == "SUCCESS" and submission.question:
-                if raw_passed_testcases is not None or raw_total_testcases is not None:
-                    if total_testcases == 0:
-                        total_testcases = max(
-                            get_hidden_testcase_count(
-                                submission.question.testcase_input,
-                                submission.question.expected_output
-                            ),
-                            1
-                        )
-                    if passed_testcases == total_testcases:
-                        final_status = "PASSED"
-                        awarded_marks = submission.question.total_marks
-                    else:
-                        final_status = "WRONG_ANSWER"
-                        awarded_marks = 0
-                else:
-                    expected = normalize_judge_output(submission.question.expected_output)
-                    actual = normalize_judge_output(executor_output)
-                    total_testcases = max(
-                        total_testcases,
-                        get_hidden_testcase_count(
-                            submission.question.testcase_input,
-                            submission.question.expected_output
-                        ),
-                        1
-                    )
-
-                    if expected == actual:
-                        passed_testcases = total_testcases
-                        final_status = "PASSED"
-                        awarded_marks = submission.question.total_marks
-                    else:
-                        passed_testcases = 0
-                        final_status = "WRONG_ANSWER"
-                        awarded_marks = 0
-            elif submission.question and total_testcases == 0:
-                total_testcases = get_hidden_testcase_count(
-                    submission.question.testcase_input,
-                    submission.question.expected_output
-                )
-
-            # Update the Database
-            submission.status = final_status
-            submission.output = executor_output
-            submission.awarded_marks = awarded_marks
-            submission.passed_testcases = passed_testcases
-            submission.total_testcases = total_testcases
-            submission.execution_time_ms = request.data.get('execution_time_ms', submission.execution_time_ms)
-            submission.save()
-            SUBMISSION_VERDICTS_TOTAL.labels(language=submission.language, status=submission.status).inc()
-            if submission.submitted_at:
-                latency_seconds = max((timezone.now() - submission.submitted_at).total_seconds(), 0.0)
-                SUBMISSION_END_TO_END_SECONDS.labels(language=submission.language, status=submission.status).observe(latency_seconds)
-
-            severity = 'info'
-            if submission.status in {'WRONG_ANSWER', 'TLE', 'MLE', 'RUNTIME_ERROR'}:
-                severity = 'warning'
-            if submission.status in {'COMPILATION_ERROR', 'SYSTEM_ERROR'}:
-                severity = 'error'
-
-            record_exam_event(
-                event_type='submission.updated',
-                message=f'Submission {submission.id} finished with {submission.status}.',
-                room=submission.room,
-                question=submission.question,
-                submission=submission,
-                actor=submission.user,
-                participant=submission.user,
-                severity=severity,
-                metadata={
-                    'executor_status': executor_status,
-                    'awarded_marks': submission.awarded_marks,
-                    'passed_testcases': submission.passed_testcases,
-                    'total_testcases': submission.total_testcases,
-                    'execution_time_ms': submission.execution_time_ms,
-                },
-            )
-            log_submission_lifecycle(
-                'submission.updated',
-                submission_id=submission.id,
-                room_id=submission.room_id,
-                question_id=submission.question_id,
-                language=submission.language,
-                executor_status=executor_status,
-                final_status=submission.status,
-                execution_time_ms=submission.execution_time_ms,
-                passed_testcases=submission.passed_testcases,
-                total_testcases=submission.total_testcases,
-            )
-            detect_suspicious_result_patterns(submission)
-
-            # Broadcast to WebSockets
-            emit_user_event(submission.user.id, 'submission.update', {
-                'submission_id': submission.id,
-                'room_id': submission.room_id,
-                'question_id': submission.question_id,
-                'status': submission.status,
-                'output': submission.output,
-                'execution_time': submission.execution_time_ms,
-                'awarded_marks': submission.awarded_marks,
-                'passed_testcases': submission.passed_testcases,
-                'total_testcases': submission.total_testcases,
-            })
 
             return Response({"message": "Updated successfully"}, status=status.HTTP_200_OK)
 
