@@ -100,6 +100,7 @@ class RoomParticipant(models.Model):
     assigned_questions = models.ManyToManyField(ExamQuestion)
     access_locked = models.BooleanField(default=False)
     access_locked_at = models.DateTimeField(null=True, blank=True)
+    last_presence_at = models.DateTimeField(null=True, blank=True)
     joined_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

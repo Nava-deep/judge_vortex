@@ -142,6 +142,12 @@ def parse_bool(value, default=False):
     return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+PARTICIPANT_ACTIVE_WINDOW_SECONDS = parse_non_negative_int(
+    os.getenv("PARTICIPANT_ACTIVE_WINDOW_SECONDS", 25),
+    25,
+) or 25
+
+
 def get_participant_solved_question_ids(participant):
     assigned_question_ids = participant.assigned_questions.values_list('id', flat=True)
     solved_ids = Submission.objects.filter(
@@ -159,8 +165,29 @@ def lock_participant_access(participant):
 
     participant.access_locked = True
     participant.access_locked_at = timezone.now()
-    participant.save(update_fields=['access_locked', 'access_locked_at'])
+    participant.last_presence_at = None
+    participant.save(update_fields=['access_locked', 'access_locked_at', 'last_presence_at'])
     return True
+
+
+def mark_participant_present(participant, now=None):
+    if participant is None:
+        return
+
+    now = now or timezone.now()
+    if participant.last_presence_at and abs((now - participant.last_presence_at).total_seconds()) < 5:
+        return
+
+    participant.last_presence_at = now
+    participant.save(update_fields=['last_presence_at'])
+
+
+def participant_is_active(participant, now=None):
+    if participant is None or participant.access_locked or not participant.last_presence_at:
+        return False
+
+    now = now or timezone.now()
+    return (now - participant.last_presence_at).total_seconds() <= PARTICIPANT_ACTIVE_WINDOW_SECONDS
 
 
 def get_default_entry_file(language):
@@ -704,15 +731,21 @@ class RoomParticipantListView(APIView):
     def get(self, request, room_id):
         room = get_object_or_404(ExamRoom, id=room_id, teacher=request.user)
         participants = RoomParticipant.objects.filter(room=room).select_related('student').order_by('student__username')
-        
+        now = timezone.now()
+
         data = []
         for p in participants:
+            is_active = participant_is_active(p, now=now)
+            if not p.access_locked and not is_active:
+                continue
             data.append({
                 "student_id": p.student.id,
                 "username": p.student.username,
                 "joined_at": p.joined_at.isoformat() if p.joined_at else None,
                 "access_locked": p.access_locked,
                 "access_locked_at": p.access_locked_at.isoformat() if p.access_locked_at else None,
+                "is_active": is_active,
+                "last_presence_at": p.last_presence_at.isoformat() if p.last_presence_at else None,
             })
         return Response(data)
 
@@ -870,7 +903,8 @@ class RoomParticipantDeleteView(APIView):
 
         participant.access_locked = False
         participant.access_locked_at = None
-        participant.save(update_fields=['access_locked', 'access_locked_at'])
+        participant.last_presence_at = None
+        participant.save(update_fields=['access_locked', 'access_locked_at', 'last_presence_at'])
         PARTICIPANT_LOCK_EVENTS_TOTAL.labels(source='teacher', action='unlock').inc()
         record_exam_event(
             event_type='participant.unlocked',
@@ -921,6 +955,7 @@ class StudentRoomStateView(APIView):
         if participant.access_locked:
             return Response({'error': 'Your access to this exam room has been locked.'}, status=status.HTTP_403_FORBIDDEN)
 
+        mark_participant_present(participant)
         room = participant.room
         assigned_qs = participant.assigned_questions.all()
 
@@ -957,6 +992,7 @@ def join_room_view(request):
         if participant.access_locked:
             ROOM_JOINS_TOTAL.labels(result='locked').inc()
             return Response({'error': 'Your access to this exam room has been locked.'}, status=status.HTTP_403_FORBIDDEN)
+        mark_participant_present(participant)
         assigned_qs = participant.assigned_questions.all()
         ROOM_JOINS_TOTAL.labels(result='resumed').inc()
         record_exam_event(
@@ -996,6 +1032,7 @@ def join_room_view(request):
     # Save the participant and their assigned questions
     participant = RoomParticipant.objects.create(room=room, student=request.user)
     participant.assigned_questions.set(assigned_qs)
+    mark_participant_present(participant)
     ROOM_JOINS_TOTAL.labels(result='joined').inc()
     record_exam_event(
         event_type='participant.joined',
@@ -1084,6 +1121,9 @@ class SubmissionCreateView(generics.CreateAPIView):
             raise serializers.ValidationError({
                 "error": "This question is not assigned to you for this exam."
             })
+
+        if participant and not is_auto_disqualification:
+            mark_participant_present(participant)
 
         normalized_files, resolved_entry_file, primary_code = normalize_submission_files(
             self.request.data.get('language'),

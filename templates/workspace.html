@@ -820,7 +820,39 @@ const gutterH = document.getElementById('gutterH');
 const editorTop = document.getElementById('editorTop');
 const inputBottom = document.getElementById('inputBottom');
 const gutterV = document.getElementById('gutterV');
+const PANEL_WIDTH_STORAGE_KEYS = {
+    practice: 'vortex_left_panel_width_practice',
+    exam: 'vortex_left_panel_width_exam',
+};
 let isResizingH = false; let isResizingV = false;
+
+function getPanelWidthStorageKey(mode = currentMode) {
+    return PANEL_WIDTH_STORAGE_KEYS[mode] || PANEL_WIDTH_STORAGE_KEYS.practice;
+}
+
+function getSavedLeftPanelWidth(mode, fallbackWidth) {
+    const parsedWidth = Number(localStorage.getItem(getPanelWidthStorageKey(mode)) || '');
+    if (parsedWidth > 20 && parsedWidth < 85) {
+        return parsedWidth;
+    }
+    return fallbackWidth;
+}
+
+function persistLeftPanelWidth() {
+    const currentWidth = parseFloat(leftPanel.style.width || '');
+    if (!Number.isFinite(currentWidth) || currentWidth <= 20 || currentWidth >= 85) {
+        return;
+    }
+    localStorage.setItem(getPanelWidthStorageKey(), currentWidth.toFixed(2));
+}
+
+function applyWorkspacePanelLayout(mode) {
+    const fallbackWidth = mode === 'exam' ? 52 : 60;
+    leftPanel.style.width = `${getSavedLeftPanelWidth(mode, fallbackWidth)}%`;
+    leftPanel.style.order = mode === 'exam' ? '2' : '1';
+    rightPanel.style.order = mode === 'exam' ? '1' : '2';
+}
+
 gutterH.addEventListener('mousedown', () => { isResizingH = true; gutterH.classList.add('active'); document.body.classList.add('resizing'); });
 gutterV.addEventListener('mousedown', () => { isResizingV = true; gutterV.classList.add('active'); document.body.classList.add('resizing'); });
 document.addEventListener('mousemove', (e) => {
@@ -836,7 +868,17 @@ document.addEventListener('mousemove', (e) => {
         }
     }
 });
-document.addEventListener('mouseup', () => { isResizingH = false; isResizingV = false; gutterH.classList.remove('active'); gutterV.classList.remove('active'); document.body.classList.remove('resizing'); });
+document.addEventListener('mouseup', () => {
+    if (isResizingH) {
+        persistLeftPanelWidth();
+    }
+    isResizingH = false;
+    isResizingV = false;
+    gutterH.classList.remove('active');
+    gutterV.classList.remove('active');
+    document.body.classList.remove('resizing');
+});
+applyWorkspacePanelLayout('practice');
 
 /* -------------------------
    Utility: escape HTML
@@ -1552,6 +1594,12 @@ examRefreshBtnEl.onclick = () => {
     refreshExamState();
 };
 
+setInterval(() => {
+    if (currentMode === 'exam' && isExamActive && activeExamRoomId && !isDisqualified) {
+        refreshExamState();
+    }
+}, 12000);
+
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -2169,9 +2217,7 @@ function switchToPractice() {
     setEditorEditable(true);
     document.getElementById('runBtn').disabled = false;
     document.getElementById('workspaceShell').classList.remove('exam-active');
-    leftPanel.style.order = '1';
-    rightPanel.style.order = '2';
-    leftPanel.style.width = '60%';
+    applyWorkspacePanelLayout('practice');
     document.getElementById('inputBottom').classList.remove('hidden');
     document.getElementById('inputBottomLabel').innerText = 'Standard Input (stdin)';
     document.getElementById('customInput').placeholder = 'Enter custom test cases here...';
@@ -2188,9 +2234,7 @@ function switchToExam() {
     updateSubmitVisibility();
     isExamActive = true;
     document.getElementById('workspaceShell').classList.add('exam-active');
-    leftPanel.style.order = '2';
-    rightPanel.style.order = '1';
-    leftPanel.style.width = '52%';
+    applyWorkspacePanelLayout('exam');
     document.getElementById('inputBottom').classList.add('hidden');
 }
 

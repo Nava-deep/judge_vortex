@@ -63,7 +63,7 @@
                         
                         <div class="flex space-x-6 mt-4 mb-4 p-4 bg-gradient-to-r from-slate-50 to-blue-50 rounded-2xl border border-slate-100 shadow-sm">
                             <div class="text-center border-r border-slate-200 pr-6">
-                                <p class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Joined Students</p>
+                                <p class="text-[10px] uppercase tracking-widest text-gray-400 font-bold">Students In Room</p>
                                 <p id="studentCount" class="text-2xl font-black text-blue-600">0</p>
                             </div>
                             <div class="text-center border-r border-slate-200 pr-6">
@@ -110,7 +110,7 @@
 
                 <div class="grid grid-cols-1 xl:grid-cols-3 gap-8">
                     <section class="xl:col-span-1">
-                        <h3 class="text-lg font-black text-gray-700 mb-4 border-b pb-2 uppercase tracking-tight">Enrolled Students</h3>
+                        <h3 class="text-lg font-black text-gray-700 mb-4 border-b pb-2 uppercase tracking-tight">Room Presence</h3>
                         <div class="bg-white/90 border border-white/70 rounded-2xl shadow-sm overflow-hidden h-96 overflow-y-auto">
                             <table class="min-w-full text-sm text-left">
                                 <thead class="bg-gray-50 border-b border-gray-200 sticky top-0 z-10">
@@ -289,6 +289,10 @@
             </div>
             <div class="mt-6 grid flex-1 gap-6 overflow-hidden lg:grid-cols-[1.1fr_0.9fr]">
                 <div class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
+                    <div class="border-b border-slate-200 bg-white px-4 py-3">
+                        <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Questions</p>
+                    </div>
+                    <div id="submissionQuestionTabs" class="flex flex-wrap gap-2 border-b border-slate-200 bg-white px-4 py-3"></div>
                     <div class="border-b border-slate-200 px-4 py-3">
                         <p class="text-[11px] font-black uppercase tracking-[0.22em] text-slate-500">Workspace Files</p>
                     </div>
@@ -317,7 +321,9 @@
         let editingQuestionId = null;
         let roomRefreshInFlight = false;
         const roomQuestionBank = new Map();
-        const teacherSubmissionLookup = new Map();
+        const teacherStudentSubmissionLookup = new Map();
+        let activeSubmissionQuestions = [];
+        let activeSubmissionQuestionKey = null;
         let activeSubmissionFiles = [];
         let activeSubmissionFilePath = null;
 
@@ -903,7 +909,7 @@
                 const students = await res.json();
                 if (Number(currentRoomId || 0) !== targetRoomId) return;
                 
-                document.getElementById('studentCount').innerText = students.filter((student) => !student.access_locked).length;
+                document.getElementById('studentCount').innerText = students.filter((student) => student.is_active).length;
                 
                 const tbody = document.getElementById('participantsTableBody');
                 tbody.innerHTML = '';
@@ -917,14 +923,22 @@
                     const studentId = student.id || student.user_id || student.student_id;
                     const studentName = student.username || student.student_name || 'Unknown';
                     const isBlocked = Boolean(student.access_locked);
+                    const statusLabel = isBlocked ? 'Blocked' : 'Active';
+                    const statusClass = isBlocked
+                        ? 'border-rose-200 bg-rose-50 text-rose-600'
+                        : 'border-emerald-200 bg-emerald-50 text-emerald-600';
+                    const statusMeta = isBlocked
+                        ? (student.access_locked_at ? `Blocked ${new Date(student.access_locked_at).toLocaleString()}` : 'Blocked')
+                        : (student.last_presence_at ? `Seen ${new Date(student.last_presence_at).toLocaleTimeString()}` : 'In room');
                     
                     tbody.innerHTML += `
                         <tr class="hover:bg-gray-50 transition border-b border-gray-50">
                             <td class="px-4 py-3">
                                 <div class="font-bold text-gray-800">${escapeHtml(studentName)}</div>
-                                <div class="mt-1 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${isBlocked ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-emerald-200 bg-emerald-50 text-emerald-600'}">
-                                    ${isBlocked ? 'Blocked' : 'Active'}
+                                <div class="mt-1 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${statusClass}">
+                                    ${statusLabel}
                                 </div>
+                                <div class="mt-1 text-[11px] text-slate-400">${escapeHtml(statusMeta)}</div>
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <button onclick="toggleParticipantLock(${studentId}, ${isBlocked ? 'false' : 'true'})" class="text-xs ${isBlocked ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 hover:bg-red-600 border-red-200'} hover:text-white border px-3 py-1 rounded font-bold transition">
@@ -983,6 +997,15 @@
             }
         }
 
+        function normalizeQuestionLookupKey(submission) {
+            const questionId = Number(submission.question_id || submission.question || 0) || null;
+            return questionId ? `question-${questionId}` : `submission-${submission.id}`;
+        }
+
+        function getSubmissionQuestionLabel(submission) {
+            return submission.question_title || (submission.question_id ? `Question ${submission.question_id}` : 'Practice');
+        }
+
         function normalizeSubmissionFiles(submission) {
             if (Array.isArray(submission.files) && submission.files.length > 0) {
                 return submission.files.map((file) => ({
@@ -1013,38 +1036,76 @@
             });
         }
 
+        function renderSubmissionQuestionTabs() {
+            const questionTabs = document.getElementById('submissionQuestionTabs');
+            questionTabs.innerHTML = activeSubmissionQuestions.map((entry) => `
+                <button
+                    type="button"
+                    data-submission-question="${escapeHtml(entry.key)}"
+                    class="rounded-xl border px-3 py-2 text-left text-xs font-black ${entry.key === activeSubmissionQuestionKey ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}"
+                >
+                    <div>${escapeHtml(entry.label)}</div>
+                    <div class="mt-1 text-[9px] font-bold uppercase tracking-[0.16em] ${entry.key === activeSubmissionQuestionKey ? 'text-blue-500' : 'text-slate-400'}">
+                        ${escapeHtml(entry.submission.status || 'PENDING')} • ${escapeHtml(entry.attemptCount)} attempt${entry.attemptCount === 1 ? '' : 's'}
+                    </div>
+                </button>
+            `).join('');
+
+            document.querySelectorAll('[data-submission-question]').forEach((button) => {
+                button.onclick = () => openSubmissionQuestion(button.getAttribute('data-submission-question'));
+            });
+        }
+
+        function openSubmissionQuestion(questionKey) {
+            const selectedQuestion = activeSubmissionQuestions.find((entry) => entry.key === questionKey) || activeSubmissionQuestions[0];
+            if (!selectedQuestion) {
+                return;
+            }
+
+            const submission = selectedQuestion.submission;
+            activeSubmissionQuestionKey = selectedQuestion.key;
+            activeSubmissionFiles = normalizeSubmissionFiles(submission);
+            activeSubmissionFilePath = activeSubmissionFiles[0]?.path || null;
+
+            document.getElementById('submissionMeta').innerText = `${submission.student_name || 'Student'} • ${selectedQuestion.label} • ${activeSubmissionQuestions.length} question snapshot${activeSubmissionQuestions.length === 1 ? '' : 's'}`;
+            document.getElementById('submissionSummary').innerHTML = `
+                <div><span class="font-black text-slate-900">Student:</span> ${escapeHtml(submission.student_name || 'Unknown')}</div>
+                <div><span class="font-black text-slate-900">Question:</span> ${escapeHtml(selectedQuestion.label)}</div>
+                <div><span class="font-black text-slate-900">Verdict:</span> ${escapeHtml(submission.status || 'PENDING')}</div>
+                <div><span class="font-black text-slate-900">Language:</span> ${escapeHtml(submission.language || '-')}</div>
+                <div><span class="font-black text-slate-900">Execution Time:</span> ${escapeHtml(submission.execution_time_ms ?? '-')} ms</div>
+                <div><span class="font-black text-slate-900">Testcases:</span> ${escapeHtml(submission.passed_testcases ?? 0)}/${escapeHtml(submission.total_testcases ?? 0)}</div>
+                <div><span class="font-black text-slate-900">Marks:</span> ${escapeHtml(submission.total_score ?? 0)}</div>
+                <div><span class="font-black text-slate-900">Latest Submit:</span> ${escapeHtml(submission.submitted_at ? new Date(submission.submitted_at).toLocaleString() : '-')}</div>
+                <div><span class="font-black text-slate-900">Saved Snapshots:</span> ${escapeHtml(selectedQuestion.attemptCount)}</div>
+            `;
+            document.getElementById('submissionOutputBlock').textContent = submission.output || 'No output';
+            renderSubmissionQuestionTabs();
+            renderSubmissionCodeFile(activeSubmissionFilePath);
+        }
+
         function closeSubmissionModal() {
             document.getElementById('submissionDetailModal').classList.add('hidden');
+            activeSubmissionQuestions = [];
+            activeSubmissionQuestionKey = null;
             activeSubmissionFiles = [];
             activeSubmissionFilePath = null;
         }
 
         window.closeSubmissionModal = closeSubmissionModal;
         window.renderSubmissionCodeFile = renderSubmissionCodeFile;
+        window.openSubmissionQuestion = openSubmissionQuestion;
 
-        function openSubmissionModal(submissionId) {
-            const submission = teacherSubmissionLookup.get(Number(submissionId));
-            if (!submission) {
-                alert('Submission details are not available yet. Refresh the room and try again.');
+        function openSubmissionModal(studentKey) {
+            const studentSnapshot = teacherStudentSubmissionLookup.get(String(studentKey));
+            if (!studentSnapshot || !Array.isArray(studentSnapshot.questionSubmissions) || studentSnapshot.questionSubmissions.length === 0) {
+                alert('Student code snapshots are not available yet. Refresh the room and try again.');
                 return;
             }
 
-            activeSubmissionFiles = normalizeSubmissionFiles(submission);
-            activeSubmissionFilePath = activeSubmissionFiles[0]?.path || null;
-
-            document.getElementById('submissionMeta').innerText = `${submission.student_name || 'Student'} • ${submission.question_title || 'Practice'} • ${submission.language || 'code'}`;
-            document.getElementById('submissionSummary').innerHTML = `
-                <div><span class="font-black text-slate-900">Student:</span> ${escapeHtml(submission.student_name || 'Unknown')}</div>
-                <div><span class="font-black text-slate-900">Question:</span> ${escapeHtml(submission.question_title || 'Practice')}</div>
-                <div><span class="font-black text-slate-900">Verdict:</span> ${escapeHtml(submission.status || 'PENDING')}</div>
-                <div><span class="font-black text-slate-900">Language:</span> ${escapeHtml(submission.language || '-')}</div>
-                <div><span class="font-black text-slate-900">Execution Time:</span> ${escapeHtml(submission.execution_time_ms ?? '-')} ms</div>
-                <div><span class="font-black text-slate-900">Testcases:</span> ${escapeHtml(submission.passed_testcases ?? 0)}/${escapeHtml(submission.total_testcases ?? 0)}</div>
-                <div><span class="font-black text-slate-900">Marks:</span> ${escapeHtml(submission.total_score ?? 0)}</div>
-                <div><span class="font-black text-slate-900">Submitted:</span> ${escapeHtml(submission.submitted_at ? new Date(submission.submitted_at).toLocaleString() : '-')}</div>
-            `;
-            document.getElementById('submissionOutputBlock').textContent = submission.output || 'No output';
-            renderSubmissionCodeFile(activeSubmissionFilePath);
+            activeSubmissionQuestions = studentSnapshot.questionSubmissions;
+            activeSubmissionQuestionKey = studentSnapshot.questionSubmissions[0].key;
+            openSubmissionQuestion(activeSubmissionQuestionKey);
             document.getElementById('submissionDetailModal').classList.remove('hidden');
         }
 
@@ -1063,7 +1124,7 @@
                 if (Number(currentRoomId || 0) !== targetRoomId) return;
                 const tbody = document.getElementById('submissionTableBody');
                 tbody.innerHTML = '';
-                teacherSubmissionLookup.clear();
+                teacherStudentSubmissionLookup.clear();
 
                 if (!submissions || submissions.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-10 text-center text-gray-400 italic">No activity to display.</td></tr>';
@@ -1073,7 +1134,6 @@
                 const studentStats = {};
 
                 submissions.forEach(sub => {
-                    teacherSubmissionLookup.set(Number(sub.id), sub);
                     const name = sub.student_name || sub.username || (sub.user && sub.user.username) || 'Unknown Student';
                     const studentKey = String(sub.student_id || name);
                     const questionId = Number(sub.question_id || sub.question || 0) || null;
@@ -1084,6 +1144,8 @@
                             name: name,
                             solvedQuestions: new Set(),
                             questionScores: new Map(),
+                            questionAttempts: new Map(),
+                            questionLatestSubmissions: new Map(),
                             latestTime: 0,
                             latestStatus: 'PENDING',
                             latestSubmission: null,
@@ -1099,7 +1161,17 @@
                         studentStats[studentKey].questionScores.set(questionId, Math.max(previousScore, earnedScore));
                     }
 
+                    const questionLookupKey = normalizeQuestionLookupKey(sub);
+                    const previousAttempts = studentStats[studentKey].questionAttempts.get(questionLookupKey) || 0;
+                    studentStats[studentKey].questionAttempts.set(questionLookupKey, previousAttempts + 1);
+
+                    const previousSubmission = studentStats[studentKey].questionLatestSubmissions.get(questionLookupKey);
                     const subTime = new Date(sub.submitted_at || sub.created_at || 0).getTime();
+                    const previousSubTime = previousSubmission ? new Date(previousSubmission.submitted_at || previousSubmission.created_at || 0).getTime() : 0;
+                    if (!previousSubmission || subTime >= previousSubTime) {
+                        studentStats[studentKey].questionLatestSubmissions.set(questionLookupKey, sub);
+                    }
+
                     if (subTime > studentStats[studentKey].latestTime) {
                         studentStats[studentKey].latestTime = subTime;
                         studentStats[studentKey].latestStatus = statusRaw;
@@ -1117,6 +1189,22 @@
                 });
 
                 leaderboard.forEach(student => {
+                    const studentLookupKey = encodeURIComponent(String(student.studentKey));
+                    const questionSubmissions = Array.from(student.questionLatestSubmissions.entries())
+                        .map(([key, submission]) => ({
+                            key,
+                            label: getSubmissionQuestionLabel(submission),
+                            attemptCount: student.questionAttempts.get(key) || 1,
+                            submission,
+                            latestTime: new Date(submission.submitted_at || submission.created_at || 0).getTime(),
+                        }))
+                        .sort((left, right) => right.latestTime - left.latestTime);
+                    teacherStudentSubmissionLookup.set(studentLookupKey, {
+                        studentKey: student.studentKey,
+                        name: student.name,
+                        questionSubmissions,
+                    });
+
                     let colorClass = 'text-yellow-600';
                     if (student.latestStatus === 'PASSED' || student.latestStatus === 'ACCEPTED') colorClass = 'text-green-600';
                     else if (student.latestStatus.includes('WRONG') || student.latestStatus.includes('FAIL') || student.latestStatus === 'WA') colorClass = 'text-red-600';
@@ -1131,9 +1219,9 @@
                             <td class="px-6 py-4 font-black ${colorClass} text-[10px] uppercase tracking-widest">
                                 ${escapeHtml(student.latestStatus)} <br>
                                 <span class="text-gray-400 font-mono text-[9px] font-normal lowercase">${timeString}</span>
-                                ${student.latestSubmission ? `
-                                <button onclick="openSubmissionModal(${student.latestSubmission.id})" class="mt-2 inline-flex rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-50">
-                                    View Code
+                                ${questionSubmissions.length ? `
+                                <button onclick="openSubmissionModal('${studentLookupKey}')" class="mt-2 inline-flex rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-slate-600 transition hover:bg-slate-50">
+                                    View All Codes
                                 </button>
                                 ` : ''}
                             </td>

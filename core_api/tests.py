@@ -166,6 +166,8 @@ class StudentJoinRoomTests(APITestCase):
         self.assertEqual(response.data['solved_question_ids'], [])
         self.assertNotIn('testcase_input', question)
         self.assertNotIn('expected_output', question)
+        participant = RoomParticipant.objects.get(room=self.room, student=self.student)
+        self.assertIsNotNone(participant.last_presence_at)
 
     def test_student_room_state_returns_live_exam_payload_without_hidden_io(self):
         join_response = self.client.post(
@@ -853,6 +855,95 @@ class TeacherRoomSubmissionFeedTests(APITestCase):
         submission_row = response.data[0]
         self.assertEqual(submission_row['student_id'], self.student.id)
         self.assertEqual(submission_row['question_id'], self.question.id)
+
+    def test_room_submission_feed_keeps_code_snapshots_for_multiple_questions(self):
+        question_two = ExamQuestion.objects.create(
+            room=self.room,
+            title='Second Question',
+            description='Return another answer.',
+            testcase_input='',
+            expected_output='7',
+            total_marks=10,
+        )
+        Submission.objects.create(
+            user=self.student,
+            room=self.room,
+            question=question_two,
+            code='print(7)',
+            files=[{'path': 'main.py', 'content': 'print(7)'}],
+            entry_file='main.py',
+            language='python',
+            status='WRONG_ANSWER',
+        )
+
+        response = self.client.get(f'/api/rooms/{self.room.id}/submissions/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {row['question_id'] for row in response.data},
+            {self.question.id, question_two.id},
+        )
+        self.assertTrue(any(row['code'] == 'print(42)' for row in response.data))
+        self.assertTrue(any(row['code'] == 'print(7)' for row in response.data))
+
+
+@override_settings(
+    CACHES={
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'judge-vortex-tests',
+        }
+    },
+    REST_FRAMEWORK={
+        'DEFAULT_AUTHENTICATION_CLASSES': [
+            'rest_framework.authentication.TokenAuthentication',
+        ],
+        'DEFAULT_PERMISSION_CLASSES': [
+            'rest_framework.permissions.IsAuthenticated',
+        ],
+        'DEFAULT_THROTTLE_CLASSES': [],
+    },
+)
+class TeacherRoomParticipantPresenceTests(APITestCase):
+    def setUp(self):
+        self.teacher = User.objects.create_user(username='teacher-presence', password='pass123')
+        self.active_student = User.objects.create_user(username='student-active', password='pass123')
+        self.stale_student = User.objects.create_user(username='student-stale', password='pass123')
+        self.blocked_student = User.objects.create_user(username='student-blocked', password='pass123')
+        self.teacher_token = Token.objects.create(user=self.teacher)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Token {self.teacher_token.key}')
+        self.room = ExamRoom.objects.create(
+            teacher=self.teacher,
+            title='Presence Room',
+            questions_to_assign=1,
+            join_deadline=timezone.now() + timedelta(days=7),
+        )
+
+    def test_participant_feed_only_lists_active_or_blocked_students(self):
+        RoomParticipant.objects.create(
+            room=self.room,
+            student=self.active_student,
+            last_presence_at=timezone.now(),
+        )
+        RoomParticipant.objects.create(
+            room=self.room,
+            student=self.stale_student,
+            last_presence_at=timezone.now() - timedelta(minutes=10),
+        )
+        RoomParticipant.objects.create(
+            room=self.room,
+            student=self.blocked_student,
+            access_locked=True,
+            access_locked_at=timezone.now(),
+        )
+
+        response = self.client.get(f'/api/rooms/{self.room.id}/participants/')
+
+        self.assertEqual(response.status_code, 200)
+        rows_by_username = {row['username']: row for row in response.data}
+        self.assertEqual(set(rows_by_username.keys()), {'student-active', 'student-blocked'})
+        self.assertTrue(rows_by_username['student-active']['is_active'])
+        self.assertFalse(rows_by_username['student-blocked']['is_active'])
 
 
 @override_settings(
