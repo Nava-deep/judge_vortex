@@ -424,10 +424,12 @@ let pendingEvaluations = new Map(); // submission_id -> question_id map for WS r
 let submissionCache = {};
 const assignedQuestionBank = new Map();
 const submissionPollers = new Map();
+const pendingExamQuestionSubmissions = new Set();
 let isExamActive = false;
 let isDisqualified = false;
 let activeExamRoomId = null;
 let activeExamQuestionId = null;
+let activeRunSubmissionId = null;
 let workspaceFiles = [];
 let workspaceFolders = [];
 let activeFilePath = null;
@@ -1099,6 +1101,38 @@ function isTerminalSubmissionStatus(status) {
     return !['PENDING', 'PROCESSING'].includes(String(status || '').toUpperCase());
 }
 
+function isRunBusy() {
+    return activeRunSubmissionId !== null;
+}
+
+function isCurrentExamQuestionPendingSubmission() {
+    return Boolean(activeExamQuestionId && pendingExamQuestionSubmissions.has(Number(activeExamQuestionId)));
+}
+
+function markRunSubmissionPending(submissionId = '__request__') {
+    activeRunSubmissionId = submissionId;
+    refreshExamActionState();
+}
+
+function clearRunSubmissionPending(submissionId = null) {
+    if (submissionId === null || activeRunSubmissionId === submissionId || activeRunSubmissionId === '__request__') {
+        activeRunSubmissionId = null;
+    }
+    refreshExamActionState();
+}
+
+function markExamQuestionSubmissionPending(questionId) {
+    if (!questionId) return;
+    pendingExamQuestionSubmissions.add(Number(questionId));
+    refreshExamActionState();
+}
+
+function clearExamQuestionSubmissionPending(questionId) {
+    if (!questionId) return;
+    pendingExamQuestionSubmissions.delete(Number(questionId));
+    refreshExamActionState();
+}
+
 function normalizeVerdictStatus(status) {
     const normalized = String(status || '').toUpperCase();
     return normalized === 'SUCCESS' ? 'PASSED' : normalized;
@@ -1213,6 +1247,8 @@ function clearSubmissionTracking(submissionId) {
 function clearAllSubmissionTracking() {
     submissionPollers.forEach((timerId) => clearInterval(timerId));
     submissionPollers.clear();
+    activeRunSubmissionId = null;
+    pendingExamQuestionSubmissions.clear();
 }
 
 async function readJsonSafe(response) {
@@ -1252,6 +1288,13 @@ function handleSubmissionResolution(submission) {
 
     if (isTerminalSubmissionStatus(normalizedStatus)) {
         clearSubmissionTracking(submissionId);
+        if (questionId) {
+            clearExamQuestionSubmissionPending(questionId);
+        } else if (activeRunSubmissionId === submissionId || activeRunSubmissionId === '__request__') {
+            clearRunSubmissionPending(submissionId);
+        } else {
+            refreshExamActionState();
+        }
     }
 }
 
@@ -1288,6 +1331,9 @@ function beginSubmissionTracking(submissionId, questionId = null) {
                     const questionIdFromPending = pendingEvaluations.get(numericSubmissionId);
                     pendingEvaluations.delete(numericSubmissionId);
                     applyQuestionVerdict(questionIdFromPending, 'ERROR');
+                    clearExamQuestionSubmissionPending(questionIdFromPending);
+                } else if (activeRunSubmissionId === numericSubmissionId || activeRunSubmissionId === '__request__') {
+                    clearRunSubmissionPending(numericSubmissionId);
                 }
                 terminalEl.innerHTML = '<div class="text-red-500 font-mono">Execution is taking longer than expected. Please retry the submission.</div>';
             }
@@ -1718,6 +1764,7 @@ function updateFinishButtonState(completed = false) {
    ------------------------- */
 runBtnEl.onclick = async (e) => {
     e.preventDefault();
+    if (isRunBusy()) return;
     
     document.getElementById('tab-console').click();
     const lang = document.getElementById('language').value;
@@ -1728,6 +1775,7 @@ runBtnEl.onclick = async (e) => {
         ? ''
         : document.getElementById('customInput').value;
     terminalEl.innerHTML = '<div class="text-gray-500 font-mono">Running code...</div>';
+    markRunSubmissionPending();
 
     try {
         const res = await fetch('/api/submissions/submit/', {
@@ -1750,20 +1798,24 @@ runBtnEl.onclick = async (e) => {
 
         if (!res.ok) {
             const errData = data;
+            clearRunSubmissionPending();
             terminalEl.innerHTML = `<div class="text-red-500 font-mono">Error: ${escapeHtml(errData.error || "Execution failed")}</div>`;
             return;
         }
 
         if (data.id) {
+            activeRunSubmissionId = Number(data.id);
             if (isTerminalSubmissionStatus(data.status || data.result)) {
                 handleSubmissionResolution(data);
             } else {
                 beginSubmissionTracking(data.id);
             }
         } else {
+            clearRunSubmissionPending();
             terminalEl.innerHTML = '<div class="text-red-500 font-mono">Execution started, but the submission ID was not returned.</div>';
         }
     } catch (err) {
+        clearRunSubmissionPending();
         terminalEl.innerHTML = `<div class="text-red-500 font-mono">Network Error: ${escapeHtml(err.message || String(err))}</div>`;
     }
 };
@@ -1775,8 +1827,10 @@ submitBtnEl.onclick = async (e) => {
     e.preventDefault();
     
     if (currentMode !== "exam" || !activeExamQuestionId) return; 
+    if (isCurrentExamQuestionPendingSubmission()) return;
 
     applyQuestionVerdict(activeExamQuestionId, 'EVALUATING');
+    markExamQuestionSubmissionPending(activeExamQuestionId);
     document.getElementById('tab-console').click();
     renderExamSubmissionPlaceholder(activeExamQuestionId);
 
@@ -1809,14 +1863,17 @@ submitBtnEl.onclick = async (e) => {
                     beginSubmissionTracking(data.id, activeExamQuestionId);
                 }
             } else {
+                clearExamQuestionSubmissionPending(activeExamQuestionId);
                 terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: submission ID missing from the server response.</div>`;
                 applyQuestionVerdict(activeExamQuestionId, 'ERROR');
             }
         } else {
+            clearExamQuestionSubmissionPending(activeExamQuestionId);
             terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(data.error || 'Unknown')}</div>`;
             applyQuestionVerdict(activeExamQuestionId, 'ERROR');
         }
     } catch (err) {
+        clearExamQuestionSubmissionPending(activeExamQuestionId);
         terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submission Network Error.</div>`;
         applyQuestionVerdict(activeExamQuestionId, 'ERROR');
     }
@@ -2063,10 +2120,11 @@ function refreshExamActionState() {
     const fullscreenBlocked = isExamActive && !document.fullscreenElement;
     const hasActiveQuestion = Boolean(activeExamQuestionId);
     const activeVerdict = normalizeVerdictStatus(questionVerdicts.get(activeExamQuestionId) || '');
+    const currentExamQuestionPending = isCurrentExamQuestionPendingSubmission();
 
     if (!isExamActive || currentMode !== 'exam') {
         setEditorEditable(true);
-        runBtnEl.disabled = false;
+        runBtnEl.disabled = isRunBusy();
         submitBtnEl.disabled = false;
         submitBtnEl.innerText = 'Submit';
         submitBtnEl.className = 'bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
@@ -2095,13 +2153,18 @@ function refreshExamActionState() {
     }
 
     setEditorEditable(true);
-    runBtnEl.disabled = false;
+    runBtnEl.disabled = isRunBusy() || currentExamQuestionPending;
 
-    submitBtnEl.disabled = false;
-    submitBtnEl.innerText = activeVerdict === 'PASSED' ? 'Submit Again' : 'Submit';
-    submitBtnEl.className = activeVerdict === 'PASSED'
-        ? 'bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg'
-        : 'bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
+    submitBtnEl.disabled = currentExamQuestionPending;
+    if (currentExamQuestionPending) {
+        submitBtnEl.innerText = 'Submitting...';
+        submitBtnEl.className = 'bg-slate-400 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
+    } else {
+        submitBtnEl.innerText = activeVerdict === 'PASSED' ? 'Submit Again' : 'Submit';
+        submitBtnEl.className = activeVerdict === 'PASSED'
+            ? 'bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg'
+            : 'bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
+    }
 
     const solvedCount = Array.from(assignedQuestionBank.keys()).filter((qId) => isSolvedVerdict(questionVerdicts.get(qId))).length;
     const completed = totalAssignedQuestions > 0 && solvedCount === totalAssignedQuestions;
