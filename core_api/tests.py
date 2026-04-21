@@ -589,6 +589,44 @@ class SubmissionCreateHiddenCasesTests(APITestCase):
             ExamEvent.objects.filter(submission=submission, event_type='submission.queued').exists()
         )
 
+    @patch('core_api.views.get_missing_runtime_tools', return_value=['sqlite3'])
+    @patch('core_api.views.KafkaProducer')
+    def test_practice_run_falls_back_to_queue_when_inline_runtime_is_missing(self, kafka_producer_cls, _missing_runtime_tools):
+        producer = kafka_producer_cls.return_value
+
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'select 1;',
+                'files': [
+                    {'path': 'query.sql', 'content': 'select 1;'},
+                ],
+                'entry_file': 'query.sql',
+                'language': 'sql',
+                'room_id': self.room.id,
+                'judge_cases': [
+                    {
+                        'input': '',
+                        'expected_output': '1',
+                    }
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        producer.send.assert_called_once()
+        topic, payload = producer.send.call_args[0]
+        self.assertEqual(topic, get_submission_topic('sql'))
+        self.assertEqual(payload['language'], 'sql')
+        self.assertEqual(len(payload['judge_cases']), 1)
+
+        submission = Submission.objects.get(id=response.data['id'])
+        self.assertEqual(submission.status, 'PENDING')
+        self.assertTrue(
+            ExamEvent.objects.filter(submission=submission, event_type='submission.queued').exists()
+        )
+
 
 @override_settings(
     CACHES={

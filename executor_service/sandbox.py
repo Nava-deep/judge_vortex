@@ -188,7 +188,22 @@ def _shell_command(parts):
 
 
 def _validate_runtime_tools(language):
-    config = LANG_CONFIG[language]
+    missing = get_missing_runtime_tools(language)
+    if not missing:
+        return None
+
+    return {
+        "status": "SYSTEM_ERROR",
+        "output": "Missing runtime tooling: " + ", ".join(missing),
+        "time_ms": 0,
+    }
+
+
+def get_missing_runtime_tools(language):
+    config = LANG_CONFIG.get(language)
+    if not config:
+        return []
+
     tools = config.get("tools") or []
 
     missing = []
@@ -198,14 +213,7 @@ def _validate_runtime_tools(language):
         if shutil.which(tool) is None:
             missing.append(tool)
 
-    if missing:
-        return {
-            "status": "SYSTEM_ERROR",
-            "output": "Missing runtime tooling: " + ", ".join(sorted(set(missing))),
-            "time_ms": 0,
-        }
-
-    return None
+    return sorted(set(missing))
 
 
 def _resolve_command(parts):

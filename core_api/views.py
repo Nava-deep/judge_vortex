@@ -49,7 +49,12 @@ from .judging import (
     get_hidden_testcase_count,
     normalize_judge_output,
 )
-from executor_service.sandbox import execute_prepared, prepare_execution, run_code_in_sandbox
+from executor_service.sandbox import (
+    execute_prepared,
+    get_missing_runtime_tools,
+    prepare_execution,
+    run_code_in_sandbox,
+)
 from execution_routing import get_all_submission_topics, get_submission_topic
 
 logger = logging.getLogger(__name__)
@@ -1143,7 +1148,7 @@ class SubmissionCreateView(generics.CreateAPIView):
         )
         detect_suspicious_submission_patterns(submission)
         
-        should_execute_inline = question_id is None
+        should_execute_inline = question_id is None and not get_missing_runtime_tools(submission.language)
 
         if should_execute_inline:
             execute_submission_inline(
