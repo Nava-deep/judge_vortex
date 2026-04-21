@@ -167,14 +167,14 @@
                         </div>
                     </div>
                     <div class="flex flex-wrap items-center justify-end gap-2">
-                        <button id="toggleFilesViewBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
-                            Files
+                        <button id="toggleFilesViewBtn" type="button" title="Toggle files panel" aria-label="Toggle files panel" class="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            <span aria-hidden="true">◧</span>
                         </button>
-                        <button id="toggleInputViewBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
-                            Input
+                        <button id="toggleInputViewBtn" type="button" title="Toggle input panel" aria-label="Toggle input panel" class="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            <span aria-hidden="true">⌨</span>
                         </button>
-                        <button id="toggleOutputViewBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
-                            Output
+                        <button id="toggleOutputViewBtn" type="button" title="Toggle output panel" aria-label="Toggle output panel" class="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50">
+                            <span aria-hidden="true">▤</span>
                         </button>
                         <button id="setEntryFileBtn" type="button" class="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-emerald-700 shadow-sm transition hover:bg-emerald-50">
                             Set Entry
@@ -850,8 +850,8 @@ const PANEL_VISIBILITY_STORAGE_KEYS = {
     output: 'vortex_panel_output_visible',
 };
 const ACTIVE_BOTTOM_TAB_STORAGE_KEY = 'vortex_active_bottom_tab';
-const ACTIVE_TOGGLE_BUTTON_CLASS = 'rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-100';
-const INACTIVE_TOGGLE_BUTTON_CLASS = 'rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50';
+const ACTIVE_TOGGLE_BUTTON_CLASS = 'flex h-10 w-10 items-center justify-center rounded-xl border border-blue-200 bg-blue-50 text-sm font-black text-blue-700 shadow-sm transition hover:bg-blue-100';
+const INACTIVE_TOGGLE_BUTTON_CLASS = 'flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-black text-slate-600 shadow-sm transition hover:bg-slate-50';
 const INACTIVE_TAB_CLASS = 'flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-slate-50/90';
 
 let isResizingV = false;
@@ -862,7 +862,9 @@ let activeBottomTab = localStorage.getItem(ACTIVE_BOTTOM_TAB_STORAGE_KEY) || 'co
 
 function setToggleButtonState(button, visible, label) {
     if (!button) return;
-    button.innerText = label;
+    button.setAttribute('title', label);
+    button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', visible ? 'true' : 'false');
     button.className = visible ? ACTIVE_TOGGLE_BUTTON_CLASS : INACTIVE_TOGGLE_BUTTON_CLASS;
 }
 
