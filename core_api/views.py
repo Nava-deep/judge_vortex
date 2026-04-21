@@ -2,13 +2,10 @@ import json
 import os
 import random
 import logging
-import re
-import secrets
 from urllib.parse import urlparse
 from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.text import slugify
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework import status, generics
@@ -24,9 +21,8 @@ from channels.layers import get_channel_layer
 from kafka import KafkaProducer
 from rest_framework import serializers
 from django.views.decorators.csrf import csrf_exempt
-import requests
 
-from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, SocialAccount, Submission, UserProfile
+from .models import ExamEvent, ExamQuestion, ExamRoom, RoomParticipant, Submission, UserProfile
 from .serializers import (
     ExamEventSerializer,
     ExamQuestionSerializer,
@@ -74,12 +70,6 @@ LANGUAGE_ENTRY_FILES = {
     'typescript': 'main.ts',
     'sql': 'query.sql',
 }
-GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '').strip()
-GITHUB_CLIENT_ID = os.getenv('GITHUB_CLIENT_ID', '').strip()
-GITHUB_CLIENT_SECRET = os.getenv('GITHUB_CLIENT_SECRET', '').strip()
-GITHUB_REDIRECT_BASE = os.getenv('GITHUB_REDIRECT_BASE', '').strip()
-
-
 class ServiceUnavailable(APIException):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     default_detail = 'Judge Vortex is temporarily unavailable.'
@@ -266,192 +256,6 @@ def normalize_judge_cases_payload(judge_cases_payload):
     return normalized_cases
 
 
-def build_provider_username_candidates(provider, provider_payload):
-    provider = str(provider or '').strip().lower()
-    candidates = []
-    raw_candidates = [
-        provider_payload.get('provider_username'),
-        provider_payload.get('username'),
-        provider_payload.get('login'),
-        provider_payload.get('email', '').split('@')[0] if provider_payload.get('email') else '',
-        provider_payload.get('name'),
-        provider_payload.get('display_name'),
-    ]
-
-    for raw_value in raw_candidates:
-        cleaned = slugify(str(raw_value or '').strip()).replace('-', '_')
-        cleaned = re.sub(r'[^a-z0-9_]+', '', cleaned.lower())
-        cleaned = cleaned.strip('_')
-        if not cleaned:
-            continue
-        if cleaned[0].isdigit():
-            cleaned = f'{provider}_{cleaned}'
-        candidates.append(cleaned[:24])
-
-    provider_prefix = f'{provider}_{provider_payload.get("provider_user_id", "")}'
-    provider_prefix = slugify(provider_prefix).replace('-', '_').strip('_')
-    if provider_prefix:
-        candidates.append(provider_prefix[:24])
-
-    candidates.append(f'{provider}_user')
-    # Preserve order while removing duplicates
-    return list(dict.fromkeys([candidate for candidate in candidates if candidate]))
-
-
-def generate_unique_provider_username(provider, provider_payload):
-    for base_candidate in build_provider_username_candidates(provider, provider_payload):
-        if not User.objects.filter(username=base_candidate).exists():
-            return base_candidate
-
-        for suffix in range(2, 500):
-            candidate = f'{base_candidate[:20]}_{suffix}'
-            if not User.objects.filter(username=candidate).exists():
-                return candidate
-
-    fallback = f'{provider}_{secrets.token_hex(4)}'
-    while User.objects.filter(username=fallback).exists():
-        fallback = f'{provider}_{secrets.token_hex(4)}'
-    return fallback
-
-
-def get_or_create_social_user(provider, provider_payload, is_teacher=False):
-    provider_user_id = str(provider_payload.get('provider_user_id') or '').strip()
-    if not provider_user_id:
-        raise serializers.ValidationError({'error': 'Missing provider user identifier.'})
-
-    social_account = SocialAccount.objects.select_related('user').filter(
-        provider=provider,
-        provider_user_id=provider_user_id,
-    ).first()
-
-    if social_account:
-        user = social_account.user
-        social_account.provider_username = provider_payload.get('provider_username', social_account.provider_username or '')
-        social_account.email = provider_payload.get('email', social_account.email or '')
-        social_account.avatar_url = provider_payload.get('avatar_url', social_account.avatar_url or '')
-        social_account.extra_data = provider_payload
-        social_account.save(update_fields=['provider_username', 'email', 'avatar_url', 'extra_data'])
-        profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'is_teacher': is_teacher})
-        return user, profile, False
-
-    email = str(provider_payload.get('email') or '').strip().lower()
-    user = None
-    if email:
-        user = User.objects.filter(email__iexact=email).first()
-
-    created = False
-    if user is None:
-        username = generate_unique_provider_username(provider, provider_payload)
-        user = User.objects.create_user(
-            username=username,
-            email=email or '',
-            password=secrets.token_urlsafe(24),
-        )
-        created = True
-
-    profile, _ = UserProfile.objects.get_or_create(user=user, defaults={'is_teacher': is_teacher})
-
-    SocialAccount.objects.create(
-        user=user,
-        provider=provider,
-        provider_user_id=provider_user_id,
-        provider_username=provider_payload.get('provider_username', ''),
-        email=email,
-        avatar_url=provider_payload.get('avatar_url', ''),
-        extra_data=provider_payload,
-    )
-
-    return user, profile, created
-
-
-def get_social_auth_config(request):
-    redirect_base = GITHUB_REDIRECT_BASE or (request.build_absolute_uri('/login/').rstrip('/') if request is not None else '')
-    return {
-        'google_client_id': GOOGLE_CLIENT_ID,
-        'github_client_id': GITHUB_CLIENT_ID,
-        'github_redirect_uri': redirect_base,
-        'enabled': {
-            'google': bool(GOOGLE_CLIENT_ID),
-            'github': bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET),
-        }
-    }
-
-
-def verify_google_identity_token(id_token):
-    if not GOOGLE_CLIENT_ID:
-        raise serializers.ValidationError({'error': 'Google sign-in is not configured.'})
-
-    response = requests.get(
-        'https://oauth2.googleapis.com/tokeninfo',
-        params={'id_token': id_token},
-        timeout=8,
-    )
-    payload = response.json() if response.ok else {}
-    if not response.ok:
-        raise serializers.ValidationError({'error': payload.get('error_description') or 'Google token verification failed.'})
-
-    aud = str(payload.get('aud') or '').strip()
-    if aud != GOOGLE_CLIENT_ID:
-        raise serializers.ValidationError({'error': 'Google token audience mismatch.'})
-
-    return {
-        'provider_user_id': str(payload.get('sub') or ''),
-        'provider_username': payload.get('email', '').split('@')[0] if payload.get('email') else '',
-        'email': payload.get('email', ''),
-        'name': payload.get('name', ''),
-        'avatar_url': payload.get('picture', ''),
-        'email_verified': str(payload.get('email_verified', '')).lower() == 'true',
-    }
-
-
-def exchange_github_code_for_profile(code, redirect_uri):
-    if not GITHUB_CLIENT_ID or not GITHUB_CLIENT_SECRET:
-        raise serializers.ValidationError({'error': 'GitHub sign-in is not configured.'})
-
-    token_response = requests.post(
-        'https://github.com/login/oauth/access_token',
-        headers={'Accept': 'application/json'},
-        data={
-            'client_id': GITHUB_CLIENT_ID,
-            'client_secret': GITHUB_CLIENT_SECRET,
-            'code': code,
-            'redirect_uri': redirect_uri or GITHUB_REDIRECT_BASE or '',
-        },
-        timeout=8,
-    )
-    token_payload = token_response.json() if token_response.ok else {}
-    access_token = token_payload.get('access_token')
-    if not access_token:
-        raise serializers.ValidationError({'error': token_payload.get('error_description') or 'GitHub token exchange failed.'})
-
-    headers = {
-        'Accept': 'application/vnd.github+json',
-        'Authorization': f'Bearer {access_token}',
-        'X-GitHub-Api-Version': '2022-11-28',
-    }
-    user_response = requests.get('https://api.github.com/user', headers=headers, timeout=8)
-    user_payload = user_response.json() if user_response.ok else {}
-    if not user_response.ok:
-        raise serializers.ValidationError({'error': user_payload.get('message') or 'GitHub profile lookup failed.'})
-
-    email = user_payload.get('email') or ''
-    if not email:
-        emails_response = requests.get('https://api.github.com/user/emails', headers=headers, timeout=8)
-        if emails_response.ok:
-            emails_payload = emails_response.json()
-            primary_email = next((item.get('email') for item in emails_payload if item.get('primary') and item.get('verified')), None)
-            fallback_email = next((item.get('email') for item in emails_payload if item.get('verified')), None)
-            email = primary_email or fallback_email or ''
-
-    return {
-        'provider_user_id': str(user_payload.get('id') or ''),
-        'provider_username': user_payload.get('login', ''),
-        'email': email,
-        'name': user_payload.get('name', ''),
-        'avatar_url': user_payload.get('avatar_url', ''),
-        'profile_url': user_payload.get('html_url', ''),
-    }
-
 # ==========================================
 # 1. AUTHENTICATION ENDPOINTS
 # ==========================================
@@ -513,63 +317,6 @@ def login_view(request):
 def logout_view(request):
     request.user.auth_token.delete()
     return Response({'message': 'Successfully logged out'}, status=status.HTTP_200_OK)
-
-
-@api_view(['GET'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def social_auth_config_view(request):
-    return Response(get_social_auth_config(request), status=status.HTTP_200_OK)
-
-
-@csrf_exempt
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def google_social_login_view(request):
-    id_token = request.data.get('id_token')
-    is_teacher = parse_bool(request.data.get('is_teacher'), False)
-    if not id_token:
-        return Response({'error': 'Google identity token is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    provider_payload = verify_google_identity_token(id_token)
-    user, profile, _ = get_or_create_social_user('google', provider_payload, is_teacher=is_teacher)
-    token, _ = Token.objects.get_or_create(user=user)
-
-    return Response({
-        'token': token.key,
-        'user_id': user.id,
-        'username': user.username,
-        'is_teacher': profile.is_teacher,
-        'provider': 'google',
-        'message': 'Google login successful',
-    }, status=status.HTTP_200_OK)
-
-
-@csrf_exempt
-@api_view(['POST'])
-@authentication_classes([])
-@permission_classes([AllowAny])
-def github_social_login_view(request):
-    code = request.data.get('code')
-    redirect_uri = request.data.get('redirect_uri')
-    is_teacher = parse_bool(request.data.get('is_teacher'), False)
-
-    if not code:
-        return Response({'error': 'GitHub authorization code is required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    provider_payload = exchange_github_code_for_profile(code, redirect_uri)
-    user, profile, _ = get_or_create_social_user('github', provider_payload, is_teacher=is_teacher)
-    token, _ = Token.objects.get_or_create(user=user)
-
-    return Response({
-        'token': token.key,
-        'user_id': user.id,
-        'username': user.username,
-        'is_teacher': profile.is_teacher,
-        'provider': 'github',
-        'message': 'GitHub login successful',
-    }, status=status.HTTP_200_OK)
 
 
 # ==========================================
