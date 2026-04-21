@@ -624,50 +624,14 @@ function syncEntryControls() {
 function renderFileExplorer() {
     const fileListEl = document.getElementById('fileList');
     if (!fileListEl) return;
-    const allFolders = getAllWorkspaceFolders();
-    const renderBranch = (parentPath = '', depth = 0) => {
-        const childFolders = allFolders.filter((folderPath) => getParentFolderPath(folderPath) === parentPath);
-        const childFiles = workspaceFiles.filter((file) => getParentFolderPath(file.path) === parentPath);
 
-        return [
-            ...childFolders.map((folderPath) => {
-                const folderName = folderPath.split('/').pop();
-                const collapsed = collapsedFolderPaths.has(folderPath);
-                return `
-                    <div class="mb-1">
-                        <button type="button" data-folder-path="${escapeHtml(folderPath)}" class="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left text-xs font-bold text-slate-600 transition hover:bg-slate-100" style="padding-left:${depth * 14 + 8}px;">
-                            <span class="text-[11px] text-slate-400">${collapsed ? '&#9656;' : '&#9662;'}</span>
-                            <span class="truncate">${escapeHtml(folderName)}</span>
-                        </button>
-                        <div class="${collapsed ? 'hidden' : ''}">
-                            ${renderBranch(folderPath, depth + 1)}
-                        </div>
-                    </div>
-                `;
-            }),
-            ...childFiles.map((file) => `
-                <button type="button" data-file-path="${escapeHtml(file.path)}" class="mb-1 flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${file.path === activeFilePath ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm' : 'border-transparent bg-white/90 text-slate-600 hover:bg-slate-50'}" style="margin-left:${depth * 14}px;">
-                    <span class="flex min-w-0 items-center gap-2">
-                        <span class="text-slate-400">&#8226;</span>
-                        <span class="truncate">${escapeHtml(file.path.split('/').pop())}</span>
-                    </span>
-                    ${file.path === workspaceEntryFilePath ? '<span class="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-emerald-700">Entry</span>' : ''}
-                </button>
-            `),
-        ].join('');
-    };
-
-    fileListEl.innerHTML = renderBranch() || '<div class="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">No files in this workspace yet.</div>';
-
-    fileListEl.querySelectorAll('[data-folder-path]').forEach((button) => {
-        button.onclick = () => {
-            const folderPath = button.getAttribute('data-folder-path');
-            if (!folderPath) return;
-            if (collapsedFolderPaths.has(folderPath)) collapsedFolderPaths.delete(folderPath);
-            else collapsedFolderPaths.add(folderPath);
-            renderFileExplorer();
-        };
-    });
+    const sortedFiles = [...workspaceFiles].sort((left, right) => left.path.localeCompare(right.path));
+    fileListEl.innerHTML = sortedFiles.map((file) => `
+        <button type="button" data-file-path="${escapeHtml(file.path)}" class="mb-1 flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-xs font-black transition ${file.path === activeFilePath ? 'border-blue-200 bg-blue-50 text-blue-700 shadow-sm' : 'border-transparent bg-white/90 text-slate-600 hover:bg-slate-50'}">
+            <span class="min-w-0 truncate font-mono">${escapeHtml(file.path)}</span>
+            ${file.path === workspaceEntryFilePath ? '<span class="shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.14em] text-emerald-700">Entry</span>' : ''}
+        </button>
+    `).join('') || '<div class="rounded-2xl border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs text-slate-400">No files in this workspace yet.</div>';
 
     fileListEl.querySelectorAll('[data-file-path]').forEach((button) => {
         button.onclick = () => setActiveFile(button.getAttribute('data-file-path'));
