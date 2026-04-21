@@ -136,24 +136,18 @@
                         <div>
                             <p class="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Files</p>
                             <p class="mt-1 text-xs font-bold text-slate-600">Project Workspace</p>
+                            <p class="mt-1 text-[10px] text-slate-400">Use file paths like <span class="font-mono">hello.py</span> or <span class="font-mono">helpers/hello.py</span></p>
                         </div>
                         <button id="addFileBtn" type="button" class="rounded-xl border border-blue-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-50">
                             + File
                         </button>
                     </div>
-                    <div class="mt-3 grid grid-cols-2 gap-2">
-                        <button id="addFolderBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
-                            + Folder
-                        </button>
+                    <div class="mt-3 grid grid-cols-1 gap-2">
                         <button id="uploadFileBtn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
                             Upload
                         </button>
                     </div>
-                    <button id="uploadFolderBtn" type="button" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50">
-                        Import Folder
-                    </button>
                     <input id="localFileInput" type="file" multiple class="hidden" />
-                    <input id="localFolderInput" type="file" webkitdirectory directory multiple class="hidden" />
                 </div>
                 <div class="border-b border-slate-100 px-4 py-3">
                     <div id="workspaceMeta" class="flex items-center justify-between rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-[11px] font-bold text-slate-500 shadow-sm">
@@ -813,7 +807,7 @@ document.getElementById('setEntryFileBtn').onclick = () => {
 
 document.getElementById('addFileBtn').onclick = () => {
     saveActiveFileContent();
-    const requestedPath = prompt('Enter a new file path. Example: helpers/math.py');
+    const requestedPath = prompt('Enter a new file path. Example: hello.py or helpers/math.py');
     const normalizedPath = sanitizeWorkspacePath(requestedPath);
     if (!normalizedPath) return;
     if (workspaceFiles.some((file) => file.path === normalizedPath)) {
@@ -829,33 +823,13 @@ document.getElementById('addFileBtn').onclick = () => {
     setActiveFile(normalizedPath);
 };
 
-document.getElementById('addFolderBtn').onclick = () => {
-    const requestedPath = prompt('Enter a folder path. Example: helpers/utils');
-    const normalizedPath = sanitizeWorkspacePath(requestedPath);
-    if (!normalizedPath) return;
-    workspaceFolders = normalizeWorkspaceFolders([...workspaceFolders, normalizedPath]);
-    ensureFolderVisible(normalizedPath);
-    renderFileExplorer();
-};
-
 document.getElementById('uploadFileBtn').onclick = () => {
     const input = document.getElementById('localFileInput');
     input.value = '';
     input.click();
 };
 
-document.getElementById('uploadFolderBtn').onclick = () => {
-    const input = document.getElementById('localFolderInput');
-    input.value = '';
-    input.click();
-};
-
 document.getElementById('localFileInput').addEventListener('change', async (event) => {
-    await importLocalFiles(event.target.files);
-    event.target.value = '';
-});
-
-document.getElementById('localFolderInput').addEventListener('change', async (event) => {
     await importLocalFiles(event.target.files);
     event.target.value = '';
 });
@@ -1069,6 +1043,8 @@ function handleSubmissionResolution(submission) {
     const submissionId = Number(submission.submission_id || submission.id);
     if (!submissionId) return;
 
+    submissionCache[submissionId] = submission;
+
     const normalizedStatus = normalizeVerdictStatus(submission.status || submission.result || 'PENDING');
     const questionId = Number(submission.question_id || submission.question || pendingEvaluations.get(submissionId) || 0) || null;
     renderSubmissionOutput(submission, questionId);
@@ -1128,7 +1104,7 @@ function beginSubmissionTracking(submissionId, questionId = null) {
         }
     };
 
-    const intervalId = setInterval(poll, 1500);
+    const intervalId = setInterval(poll, 600);
     submissionPollers.set(numericSubmissionId, intervalId);
     poll();
 }
@@ -1537,7 +1513,11 @@ runBtnEl.onclick = async (e) => {
         }
 
         if (data.id) {
-            beginSubmissionTracking(data.id);
+            if (isTerminalSubmissionStatus(data.status || data.result)) {
+                handleSubmissionResolution(data);
+            } else {
+                beginSubmissionTracking(data.id);
+            }
         } else {
             terminalEl.innerHTML = '<div class="text-red-500 font-mono">Execution started, but the submission ID was not returned.</div>';
         }
@@ -1579,7 +1559,12 @@ submitBtnEl.onclick = async (e) => {
         
         if (res.ok) {
             if (data.id) {
-                beginSubmissionTracking(data.id, activeExamQuestionId);
+                if (isTerminalSubmissionStatus(data.status || data.result)) {
+                    pendingEvaluations.set(Number(data.id), activeExamQuestionId);
+                    handleSubmissionResolution(data);
+                } else {
+                    beginSubmissionTracking(data.id, activeExamQuestionId);
+                }
             } else {
                 terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: submission ID missing from the server response.</div>`;
                 applyQuestionVerdict(activeExamQuestionId, 'ERROR');

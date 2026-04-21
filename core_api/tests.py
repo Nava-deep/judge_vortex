@@ -2,6 +2,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from asgiref.sync import async_to_sync
 from django.contrib.auth.models import User
 from django.test import override_settings
 from django.utils import timezone
@@ -545,6 +546,49 @@ class SubmissionCreateHiddenCasesTests(APITestCase):
             ).exists()
         )
 
+    @patch('core_api.views.KafkaProducer')
+    def test_practice_run_executes_inline_without_kafka_and_returns_output(self, kafka_producer_cls):
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'from hello import greet\nprint(greet())',
+                'files': [
+                    {'path': 'main.py', 'content': 'from hello import greet\nprint(greet())'},
+                    {'path': 'hello.py', 'content': 'def greet():\n    return "practice ready"'},
+                ],
+                'entry_file': 'main.py',
+                'language': 'python',
+                'room_id': self.room.id,
+                'judge_cases': [
+                    {
+                        'input': '',
+                        'expected_output': 'practice ready',
+                    }
+                ],
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['status'], 'SUCCESS')
+        self.assertEqual(response.data['output'].strip(), 'practice ready')
+        self.assertEqual(response.data['passed_testcases'], 1)
+        self.assertEqual(response.data['total_testcases'], 1)
+        kafka_producer_cls.assert_not_called()
+
+        submission = Submission.objects.get(id=response.data['id'])
+        self.assertEqual(submission.status, 'SUCCESS')
+        self.assertEqual(submission.output.strip(), 'practice ready')
+        self.assertTrue(
+            ExamEvent.objects.filter(submission=submission, event_type='submission.received').exists()
+        )
+        self.assertTrue(
+            ExamEvent.objects.filter(submission=submission, event_type='submission.updated').exists()
+        )
+        self.assertFalse(
+            ExamEvent.objects.filter(submission=submission, event_type='submission.queued').exists()
+        )
+
 
 @override_settings(
     CACHES={
@@ -848,6 +892,22 @@ class SubmissionWorkspaceNormalizationTests(APITestCase):
                 'print(42)',
                 [{'path': '../secrets.py', 'content': 'nope'}],
             )
+
+    def test_python_workspace_files_can_import_each_other(self):
+        result = async_to_sync(core_views.run_code_in_sandbox)(
+            'from hello import greet\nprint(greet())',
+            'python',
+            '',
+            3000,
+            files=[
+                {'path': 'main.py', 'content': 'from hello import greet\nprint(greet())'},
+                {'path': 'hello.py', 'content': 'def greet():\n    return "hello from helper"'},
+            ],
+            entry_file='main.py',
+        )
+
+        self.assertEqual(result['status'], 'SUCCESS')
+        self.assertEqual(result['output'].strip(), 'hello from helper')
 
     def test_build_testcases_splits_blank_line_delimited_cases(self):
         testcases = build_testcases('1\n\n2', '1\n\n4')

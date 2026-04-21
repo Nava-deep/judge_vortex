@@ -49,6 +49,7 @@ from .judging import (
     get_hidden_testcase_count,
     normalize_judge_output,
 )
+from executor_service.sandbox import execute_prepared, prepare_execution, run_code_in_sandbox
 from execution_routing import get_all_submission_topics, get_submission_topic
 
 logger = logging.getLogger(__name__)
@@ -254,6 +255,257 @@ def normalize_judge_cases_payload(judge_cases_payload):
         })
 
     return normalized_cases
+
+
+def finalize_submission_result(submission, executor_status, executor_output, execution_time_ms, passed_testcases=None, total_testcases=None):
+    passed_testcases = parse_non_negative_int(
+        passed_testcases,
+        submission.passed_testcases
+    )
+    total_testcases = parse_non_negative_int(
+        total_testcases,
+        submission.total_testcases
+    )
+
+    if total_testcases and passed_testcases > total_testcases:
+        passed_testcases = total_testcases
+
+    final_status = executor_status
+    awarded_marks = 0
+
+    if executor_status == "SUCCESS" and submission.question:
+        if passed_testcases or total_testcases:
+            if total_testcases == 0:
+                total_testcases = max(
+                    get_hidden_testcase_count(
+                        submission.question.testcase_input,
+                        submission.question.expected_output
+                    ),
+                    1
+                )
+            if passed_testcases == total_testcases:
+                final_status = "PASSED"
+                awarded_marks = submission.question.total_marks
+            else:
+                final_status = "WRONG_ANSWER"
+                awarded_marks = 0
+        else:
+            expected = normalize_judge_output(submission.question.expected_output)
+            actual = normalize_judge_output(executor_output)
+            total_testcases = max(
+                total_testcases,
+                get_hidden_testcase_count(
+                    submission.question.testcase_input,
+                    submission.question.expected_output
+                ),
+                1
+            )
+
+            if expected == actual:
+                passed_testcases = total_testcases
+                final_status = "PASSED"
+                awarded_marks = submission.question.total_marks
+            else:
+                passed_testcases = 0
+                final_status = "WRONG_ANSWER"
+                awarded_marks = 0
+    elif submission.question and total_testcases == 0:
+        total_testcases = get_hidden_testcase_count(
+            submission.question.testcase_input,
+            submission.question.expected_output
+        )
+
+    submission.status = final_status
+    submission.output = executor_output
+    submission.awarded_marks = awarded_marks
+    submission.passed_testcases = passed_testcases
+    submission.total_testcases = total_testcases
+    submission.execution_time_ms = execution_time_ms or submission.execution_time_ms
+    submission.save()
+    SUBMISSION_VERDICTS_TOTAL.labels(language=submission.language, status=submission.status).inc()
+    if submission.submitted_at:
+        latency_seconds = max((timezone.now() - submission.submitted_at).total_seconds(), 0.0)
+        SUBMISSION_END_TO_END_SECONDS.labels(language=submission.language, status=submission.status).observe(latency_seconds)
+
+    severity = 'info'
+    if submission.status in {'WRONG_ANSWER', 'TLE', 'MLE', 'RUNTIME_ERROR'}:
+        severity = 'warning'
+    if submission.status in {'COMPILATION_ERROR', 'SYSTEM_ERROR'}:
+        severity = 'error'
+
+    record_exam_event(
+        event_type='submission.updated',
+        message=f'Submission {submission.id} finished with {submission.status}.',
+        room=submission.room,
+        question=submission.question,
+        submission=submission,
+        actor=submission.user,
+        participant=submission.user,
+        severity=severity,
+        metadata={
+            'executor_status': executor_status,
+            'awarded_marks': submission.awarded_marks,
+            'passed_testcases': submission.passed_testcases,
+            'total_testcases': submission.total_testcases,
+            'execution_time_ms': submission.execution_time_ms,
+        },
+    )
+    log_submission_lifecycle(
+        'submission.updated',
+        submission_id=submission.id,
+        room_id=submission.room_id,
+        question_id=submission.question_id,
+        language=submission.language,
+        executor_status=executor_status,
+        final_status=submission.status,
+        execution_time_ms=submission.execution_time_ms,
+        passed_testcases=submission.passed_testcases,
+        total_testcases=submission.total_testcases,
+    )
+    detect_suspicious_result_patterns(submission)
+
+    emit_user_event(submission.user.id, 'submission.update', {
+        'submission_id': submission.id,
+        'room_id': submission.room_id,
+        'question_id': submission.question_id,
+        'status': submission.status,
+        'output': submission.output,
+        'execution_time': submission.execution_time_ms,
+        'awarded_marks': submission.awarded_marks,
+        'passed_testcases': submission.passed_testcases,
+        'total_testcases': submission.total_testcases,
+    })
+
+    return submission
+
+
+def execute_submission_inline(submission, user_input, judge_cases, time_limit_ms):
+    if judge_cases:
+        total_testcases = len(judge_cases)
+        passed_testcases = 0
+        total_time_ms = 0
+        last_output = ""
+
+        prepared = async_to_sync(prepare_execution)(
+            submission.code,
+            submission.language,
+            judge_cases[0].get('input', ''),
+            files=submission.files,
+            entry_file=submission.entry_file,
+        )
+
+        if isinstance(prepared, dict):
+            return finalize_submission_result(
+                submission,
+                prepared['status'],
+                prepared['output'],
+                prepared.get('time_ms', 0),
+                passed_testcases=0,
+                total_testcases=total_testcases,
+            )
+
+        try:
+            for case in judge_cases:
+                result = async_to_sync(execute_prepared)(
+                    prepared,
+                    case.get('input', ''),
+                    time_limit_ms,
+                )
+                total_time_ms += int(result.get('time_ms') or 0)
+                last_output = result.get('output', '') or ''
+
+                if result['status'] == 'TLE':
+                    return finalize_submission_result(
+                        submission,
+                        'TLE',
+                        'Time Limit Exceeded',
+                        total_time_ms or time_limit_ms,
+                        passed_testcases=passed_testcases,
+                        total_testcases=total_testcases,
+                    )
+
+                if result['status'] in ['MEMORY_LIMIT_EXCEEDED', 'MLE']:
+                    return finalize_submission_result(
+                        submission,
+                        'MLE',
+                        result['output'],
+                        total_time_ms,
+                        passed_testcases=passed_testcases,
+                        total_testcases=total_testcases,
+                    )
+
+                if result['status'] in ['RUNTIME_ERROR', 'COMPILATION_ERROR', 'SYSTEM_ERROR']:
+                    return finalize_submission_result(
+                        submission,
+                        result['status'],
+                        result['output'],
+                        total_time_ms,
+                        passed_testcases=passed_testcases,
+                        total_testcases=total_testcases,
+                    )
+
+                actual_output = normalize_judge_output(result['output'])
+                expected_output = normalize_judge_output(case.get('expected_output', ''))
+                if actual_output == expected_output:
+                    passed_testcases += 1
+                    continue
+
+                return finalize_submission_result(
+                    submission,
+                    'SUCCESS',
+                    result['output'],
+                    total_time_ms,
+                    passed_testcases=passed_testcases,
+                    total_testcases=total_testcases,
+                )
+
+            return finalize_submission_result(
+                submission,
+                'SUCCESS',
+                last_output,
+                total_time_ms,
+                passed_testcases=passed_testcases,
+                total_testcases=total_testcases,
+            )
+        finally:
+            prepared.cleanup()
+
+    result = async_to_sync(run_code_in_sandbox)(
+        submission.code,
+        submission.language,
+        user_input,
+        time_limit_ms,
+        files=submission.files,
+        entry_file=submission.entry_file,
+    )
+
+    if result['status'] == 'TLE':
+        return finalize_submission_result(
+            submission,
+            'TLE',
+            'Time Limit Exceeded',
+            result.get('time_ms') or time_limit_ms,
+        )
+    if result['status'] in ['MEMORY_LIMIT_EXCEEDED', 'MLE']:
+        return finalize_submission_result(
+            submission,
+            'MLE',
+            result['output'],
+            result.get('time_ms', 0),
+        )
+    if result['status'] in ['RUNTIME_ERROR', 'COMPILATION_ERROR', 'SYSTEM_ERROR']:
+        return finalize_submission_result(
+            submission,
+            result['status'],
+            result['output'],
+            result.get('time_ms', 0),
+        )
+    return finalize_submission_result(
+        submission,
+        'SUCCESS',
+        result['output'],
+        result.get('time_ms', 0),
+    )
 
 
 # ==========================================
@@ -773,6 +1025,7 @@ class SubmissionCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         user_custom_input = self.request.data.get('user_input', "")
+        requested_time_limit_ms = parse_non_negative_int(self.request.data.get('time_limit_ms', 10000), 10000) or 10000
         room_id = self.request.data.get('room_id') or None
         question_id = self.request.data.get('question_id') or None
         incoming_files = self.request.data.get('files')
@@ -890,9 +1143,18 @@ class SubmissionCreateView(generics.CreateAPIView):
         )
         detect_suspicious_submission_patterns(submission)
         
-        # Push to Kafka for Native Execution
+        should_execute_inline = question_id is None
+
+        if should_execute_inline:
+            execute_submission_inline(
+                submission,
+                user_custom_input,
+                judge_cases,
+                requested_time_limit_ms,
+            )
+            return
+
         producer = get_kafka_producer()
-        
         message = {
             'submission_id': submission.id,
             'correlation_id': f'sub-{submission.id}',
@@ -902,7 +1164,7 @@ class SubmissionCreateView(generics.CreateAPIView):
             'entry_file': submission.entry_file,
             'language': submission.language,
             'user_input': user_custom_input,
-            'time_limit_ms': self.request.data.get('time_limit_ms', 10000), 
+            'time_limit_ms': requested_time_limit_ms,
         }
         if judge_cases:
             message['judge_cases'] = judge_cases
@@ -970,124 +1232,14 @@ class SubmissionUpdateView(APIView):
             executor_output = request.data.get('output', submission.output)
             raw_passed_testcases = request.data.get('passed_testcases')
             raw_total_testcases = request.data.get('total_testcases')
-            passed_testcases = parse_non_negative_int(
-                raw_passed_testcases,
-                submission.passed_testcases
+            finalize_submission_result(
+                submission,
+                executor_status,
+                executor_output,
+                parse_non_negative_int(request.data.get('execution_time_ms'), submission.execution_time_ms),
+                passed_testcases=raw_passed_testcases,
+                total_testcases=raw_total_testcases,
             )
-            total_testcases = parse_non_negative_int(
-                raw_total_testcases,
-                submission.total_testcases
-            )
-            if total_testcases and passed_testcases > total_testcases:
-                passed_testcases = total_testcases
-            
-            final_status = executor_status
-            awarded_marks = 0
-            
-            if executor_status == "SUCCESS" and submission.question:
-                if raw_passed_testcases is not None or raw_total_testcases is not None:
-                    if total_testcases == 0:
-                        total_testcases = max(
-                            get_hidden_testcase_count(
-                                submission.question.testcase_input,
-                                submission.question.expected_output
-                            ),
-                            1
-                        )
-                    if passed_testcases == total_testcases:
-                        final_status = "PASSED"
-                        awarded_marks = submission.question.total_marks
-                    else:
-                        final_status = "WRONG_ANSWER"
-                        awarded_marks = 0
-                else:
-                    expected = normalize_judge_output(submission.question.expected_output)
-                    actual = normalize_judge_output(executor_output)
-                    total_testcases = max(
-                        total_testcases,
-                        get_hidden_testcase_count(
-                            submission.question.testcase_input,
-                            submission.question.expected_output
-                        ),
-                        1
-                    )
-
-                    if expected == actual:
-                        passed_testcases = total_testcases
-                        final_status = "PASSED"
-                        awarded_marks = submission.question.total_marks
-                    else:
-                        passed_testcases = 0
-                        final_status = "WRONG_ANSWER"
-                        awarded_marks = 0
-            elif submission.question and total_testcases == 0:
-                total_testcases = get_hidden_testcase_count(
-                    submission.question.testcase_input,
-                    submission.question.expected_output
-                )
-
-            # Update the Database
-            submission.status = final_status
-            submission.output = executor_output
-            submission.awarded_marks = awarded_marks
-            submission.passed_testcases = passed_testcases
-            submission.total_testcases = total_testcases
-            submission.execution_time_ms = request.data.get('execution_time_ms', submission.execution_time_ms)
-            submission.save()
-            SUBMISSION_VERDICTS_TOTAL.labels(language=submission.language, status=submission.status).inc()
-            if submission.submitted_at:
-                latency_seconds = max((timezone.now() - submission.submitted_at).total_seconds(), 0.0)
-                SUBMISSION_END_TO_END_SECONDS.labels(language=submission.language, status=submission.status).observe(latency_seconds)
-
-            severity = 'info'
-            if submission.status in {'WRONG_ANSWER', 'TLE', 'MLE', 'RUNTIME_ERROR'}:
-                severity = 'warning'
-            if submission.status in {'COMPILATION_ERROR', 'SYSTEM_ERROR'}:
-                severity = 'error'
-
-            record_exam_event(
-                event_type='submission.updated',
-                message=f'Submission {submission.id} finished with {submission.status}.',
-                room=submission.room,
-                question=submission.question,
-                submission=submission,
-                actor=submission.user,
-                participant=submission.user,
-                severity=severity,
-                metadata={
-                    'executor_status': executor_status,
-                    'awarded_marks': submission.awarded_marks,
-                    'passed_testcases': submission.passed_testcases,
-                    'total_testcases': submission.total_testcases,
-                    'execution_time_ms': submission.execution_time_ms,
-                },
-            )
-            log_submission_lifecycle(
-                'submission.updated',
-                submission_id=submission.id,
-                room_id=submission.room_id,
-                question_id=submission.question_id,
-                language=submission.language,
-                executor_status=executor_status,
-                final_status=submission.status,
-                execution_time_ms=submission.execution_time_ms,
-                passed_testcases=submission.passed_testcases,
-                total_testcases=submission.total_testcases,
-            )
-            detect_suspicious_result_patterns(submission)
-
-            # Broadcast to WebSockets
-            emit_user_event(submission.user.id, 'submission.update', {
-                'submission_id': submission.id,
-                'room_id': submission.room_id,
-                'question_id': submission.question_id,
-                'status': submission.status,
-                'output': submission.output,
-                'execution_time': submission.execution_time_ms,
-                'awarded_marks': submission.awarded_marks,
-                'passed_testcases': submission.passed_testcases,
-                'total_testcases': submission.total_testcases,
-            })
 
             return Response({"message": "Updated successfully"}, status=status.HTTP_200_OK)
 
