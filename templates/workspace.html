@@ -126,10 +126,10 @@
     Fullscreen paused. Re-enter to continue.
 </div>
 
-<div id="workspaceShell" class="relative z-10 flex-1 flex overflow-hidden w-full p-4 gap-4">
+<div id="workspaceShell" class="relative z-10 flex-1 flex overflow-hidden w-full p-4">
 
-    <div id="leftPanel" class="flex flex-col min-w-[200px] rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)] bg-white/88 backdrop-blur-xl" style="width: 60%;">
-        <div id="editorTop" class="flex flex-1 overflow-hidden border-r border-slate-100 bg-white">
+    <div id="leftPanel" class="flex min-w-0 flex-1 flex-col rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)] bg-white/88 backdrop-blur-xl">
+        <div id="editorTop" class="flex min-h-0 flex-1 overflow-hidden bg-white">
             <aside id="fileExplorer" class="flex w-64 shrink-0 flex-col border-r border-slate-100 bg-[linear-gradient(180deg,_rgba(248,250,252,0.96),_rgba(241,245,249,0.92))]">
                 <div class="border-b border-slate-100 px-4 py-4">
                     <div class="flex items-center justify-between">
@@ -190,23 +190,24 @@
 
         <div id="gutterV" class="gutter-v shrink-0 border-y border-gray-200 bg-gray-50"></div>
 
-        <div id="inputBottom" class="bg-slate-50/90 p-3 flex flex-col shrink-0 border-r border-slate-100" style="height: 180px;">
-            <label id="inputBottomLabel" class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Standard Input (stdin)</label>
-            <textarea id="customInput" placeholder="Enter custom test cases here..." class="flex-1 w-full bg-white border border-gray-300 rounded p-3 font-mono text-sm text-gray-800 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 box-border resize-none transition shadow-sm"></textarea>
-        </div>
-    </div>
-
-    <div id="gutterH" class="gutter-h shrink-0 border-x border-gray-200 bg-gray-50"></div>
-
-    <div id="rightPanel" class="flex-1 min-w-[300px] flex flex-col bg-white/88 backdrop-blur-xl rounded-[30px] overflow-hidden border border-white/70 shadow-[0_28px_80px_-44px_rgba(15,23,42,0.32)]">
+    <div id="rightPanel" class="min-h-[220px] flex flex-col overflow-hidden border-t border-slate-100 bg-white/94" style="height: 280px;">
         <div class="bg-slate-50/90 flex border-b border-slate-100 shrink-0 sticky top-0 z-20">
             <button id="tab-console" class="flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none">Output</button>
+            <button id="tab-input" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-slate-50/90">Input</button>
             <button id="tab-history" class="flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-slate-50/90">History</button>
             <button id="tab-exam" class="hidden flex-1 px-5 py-3 text-xs font-bold text-purple-600 hover:text-purple-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-slate-50/90">Exam Qs</button>
         </div>
 
         <div class="flex-1 relative overflow-hidden">
             <div id="terminal" class="absolute inset-0 p-5 overflow-y-auto font-mono text-sm leading-relaxed block bg-white">
+            </div>
+
+            <div id="inputBottom" class="absolute inset-0 hidden flex-col bg-slate-50/70 p-5">
+                <div class="flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
+                    <label id="inputBottomLabel" class="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Standard Input (stdin)</label>
+                    <span class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Scratch / Run Test</span>
+                </div>
+                <textarea id="customInput" placeholder="Enter custom test cases here..." class="mt-4 flex-1 w-full rounded-2xl border border-gray-300 bg-white p-4 font-mono text-sm text-gray-800 shadow-sm transition box-border resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"></textarea>
             </div>
 
             <div id="historyPanel" class="absolute inset-0 overflow-y-auto hidden bg-white">
@@ -241,6 +242,7 @@
         
         </div>
     </div>
+</div>
 </div>
 
 <div id="timeUpModal" class="fixed inset-0 hidden z-[120] bg-slate-950/70 backdrop-blur-xl">
@@ -821,11 +823,10 @@ document.getElementById('deleteFileBtn').onclick = () => {
 };
 
 /* -------------------------
-   Resizing engine
+   Workspace layout engine
    ------------------------- */
 const leftPanel = document.getElementById('leftPanel');
 const rightPanel = document.getElementById('rightPanel');
-const gutterH = document.getElementById('gutterH');
 const editorTop = document.getElementById('editorTop');
 const inputBottom = document.getElementById('inputBottom');
 const gutterV = document.getElementById('gutterV');
@@ -833,53 +834,148 @@ const fileExplorerEl = document.getElementById('fileExplorer');
 const toggleFilesViewBtn = document.getElementById('toggleFilesViewBtn');
 const toggleInputViewBtn = document.getElementById('toggleInputViewBtn');
 const toggleOutputViewBtn = document.getElementById('toggleOutputViewBtn');
-const PANEL_WIDTH_STORAGE_KEYS = {
-    practice: 'vortex_left_panel_width_practice',
-    exam: 'vortex_left_panel_width_exam',
+const tabConsole = document.getElementById('tab-console');
+const tabInput = document.getElementById('tab-input');
+const tabHistory = document.getElementById('tab-history');
+const tabExam = document.getElementById('tab-exam');
+const historyPanel = document.getElementById('historyPanel');
+const examPanel = document.getElementById('examPanel');
+const BOTTOM_PANEL_HEIGHT_STORAGE_KEYS = {
+    practice: 'vortex_bottom_panel_height_practice',
+    exam: 'vortex_bottom_panel_height_exam',
 };
 const PANEL_VISIBILITY_STORAGE_KEYS = {
     files: 'vortex_panel_files_visible',
     input: 'vortex_panel_input_visible',
     output: 'vortex_panel_output_visible',
 };
-let isResizingH = false; let isResizingV = false;
+const ACTIVE_BOTTOM_TAB_STORAGE_KEY = 'vortex_active_bottom_tab';
+const ACTIVE_TOGGLE_BUTTON_CLASS = 'rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-100';
+const INACTIVE_TOGGLE_BUTTON_CLASS = 'rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50';
+const INACTIVE_TAB_CLASS = 'flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-slate-50/90';
+
+let isResizingV = false;
 let areFilesVisible = localStorage.getItem(PANEL_VISIBILITY_STORAGE_KEYS.files) !== '0';
 let isInputVisible = localStorage.getItem(PANEL_VISIBILITY_STORAGE_KEYS.input) !== '0';
 let isOutputVisible = localStorage.getItem(PANEL_VISIBILITY_STORAGE_KEYS.output) !== '0';
+let activeBottomTab = localStorage.getItem(ACTIVE_BOTTOM_TAB_STORAGE_KEY) || 'console';
 
-function setToggleButtonState(button, visible, labels) {
+function setToggleButtonState(button, visible, label) {
     if (!button) return;
-    button.innerText = visible ? labels.visible : labels.hidden;
-    button.className = visible
-        ? 'rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-blue-700 shadow-sm transition hover:bg-blue-100'
-        : 'rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-slate-600 shadow-sm transition hover:bg-slate-50';
+    button.innerText = label;
+    button.className = visible ? ACTIVE_TOGGLE_BUTTON_CLASS : INACTIVE_TOGGLE_BUTTON_CLASS;
 }
 
-function getPanelWidthStorageKey(mode = currentMode) {
-    return PANEL_WIDTH_STORAGE_KEYS[mode] || PANEL_WIDTH_STORAGE_KEYS.practice;
+function getBottomPanelHeightStorageKey(mode = currentMode) {
+    return BOTTOM_PANEL_HEIGHT_STORAGE_KEYS[mode] || BOTTOM_PANEL_HEIGHT_STORAGE_KEYS.practice;
 }
 
-function getSavedLeftPanelWidth(mode, fallbackWidth) {
-    const parsedWidth = Number(localStorage.getItem(getPanelWidthStorageKey(mode)) || '');
-    if (parsedWidth > 20 && parsedWidth < 85) {
-        return parsedWidth;
+function getBottomPanelFallbackHeight(mode = currentMode) {
+    return mode === 'exam' ? 320 : 260;
+}
+
+function getSavedBottomPanelHeight(mode = currentMode) {
+    const parsedHeight = Number(localStorage.getItem(getBottomPanelHeightStorageKey(mode)) || '');
+    if (parsedHeight >= 160 && parsedHeight <= 480) {
+        return parsedHeight;
     }
-    return fallbackWidth;
+    return getBottomPanelFallbackHeight(mode);
 }
 
-function persistLeftPanelWidth() {
-    const currentWidth = parseFloat(leftPanel.style.width || '');
-    if (!Number.isFinite(currentWidth) || currentWidth <= 20 || currentWidth >= 85) {
+function persistBottomPanelHeight() {
+    const currentHeight = parseFloat(rightPanel.style.height || '');
+    if (!Number.isFinite(currentHeight) || currentHeight < 160 || currentHeight > 480) {
         return;
     }
-    localStorage.setItem(getPanelWidthStorageKey(), currentWidth.toFixed(2));
+    localStorage.setItem(getBottomPanelHeightStorageKey(), currentHeight.toFixed(0));
 }
 
-function applyWorkspacePanelLayout(mode) {
-    const fallbackWidth = mode === 'exam' ? 52 : 60;
-    leftPanel.style.width = isOutputVisible ? `${getSavedLeftPanelWidth(mode, fallbackWidth)}%` : '100%';
-    leftPanel.style.order = mode === 'exam' ? '2' : '1';
-    rightPanel.style.order = mode === 'exam' ? '1' : '2';
+function hasVisibleBottomDock(mode = currentMode) {
+    return isInputVisible || isOutputVisible || mode === 'exam';
+}
+
+function getAvailableBottomTabs(mode = currentMode) {
+    const tabs = [];
+    if (isOutputVisible) tabs.push('console', 'history');
+    if (isInputVisible) tabs.push('input');
+    if (mode === 'exam') tabs.push('exam');
+    return Array.from(new Set(tabs));
+}
+
+function resolveBottomTab(preferredTab = activeBottomTab, mode = currentMode) {
+    const availableTabs = getAvailableBottomTabs(mode);
+    if (!availableTabs.length) return null;
+    if (preferredTab && availableTabs.includes(preferredTab)) return preferredTab;
+    if (mode === 'exam' && availableTabs.includes('exam')) return 'exam';
+    if (availableTabs.includes('console')) return 'console';
+    if (availableTabs.includes('input')) return 'input';
+    return availableTabs[0];
+}
+
+function resetBottomPanels() {
+    terminalEl.classList.add('hidden');
+    inputBottom.classList.add('hidden');
+    historyPanel.classList.add('hidden');
+    examPanel.classList.add('hidden');
+}
+
+function resetTabClasses() {
+    tabConsole.className = `${INACTIVE_TAB_CLASS}${isOutputVisible ? '' : ' hidden'}`;
+    tabInput.className = `${INACTIVE_TAB_CLASS}${isInputVisible ? '' : ' hidden'}`;
+    tabHistory.className = `${INACTIVE_TAB_CLASS}${isOutputVisible ? '' : ' hidden'}`;
+    tabExam.className = `${INACTIVE_TAB_CLASS}${currentMode === 'exam' ? '' : ' hidden'}`;
+}
+
+function renderBottomTab() {
+    const resolvedTab = resolveBottomTab(activeBottomTab, currentMode);
+
+    resetBottomPanels();
+    resetTabClasses();
+
+    if (!resolvedTab) {
+        return;
+    }
+
+    activeBottomTab = resolvedTab;
+    localStorage.setItem(ACTIVE_BOTTOM_TAB_STORAGE_KEY, activeBottomTab);
+
+    if (resolvedTab === 'console') {
+        tabConsole.className = 'flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none';
+        terminalEl.classList.remove('hidden');
+        return;
+    }
+
+    if (resolvedTab === 'input') {
+        tabInput.className = 'flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none';
+        inputBottom.classList.remove('hidden');
+        inputBottom.classList.add('flex');
+        return;
+    }
+
+    if (resolvedTab === 'history') {
+        tabHistory.className = 'flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none';
+        historyPanel.classList.remove('hidden');
+        fetchHistory();
+        return;
+    }
+
+    tabExam.className = 'flex-1 px-5 py-3 text-xs font-bold text-purple-600 border-b-2 border-purple-600 uppercase tracking-widest bg-white focus:outline-none';
+    examPanel.classList.remove('hidden');
+}
+
+function applyWorkspacePanelLayout(mode = currentMode) {
+    leftPanel.style.width = '100%';
+    const dockVisible = hasVisibleBottomDock(mode);
+    rightPanel.classList.toggle('hidden', !dockVisible);
+    gutterV.classList.toggle('hidden', !dockVisible);
+
+    if (!dockVisible) {
+        resetBottomPanels();
+        return;
+    }
+
+    rightPanel.style.height = `${getSavedBottomPanelHeight(mode)}px`;
+    renderBottomTab();
 }
 
 function setFilesPanelVisibility(visible, persist = true) {
@@ -888,63 +984,89 @@ function setFilesPanelVisibility(visible, persist = true) {
     if (persist) {
         localStorage.setItem(PANEL_VISIBILITY_STORAGE_KEYS.files, visible ? '1' : '0');
     }
-    setToggleButtonState(toggleFilesViewBtn, visible, { visible: 'Files On', hidden: 'Files Off' });
+    setToggleButtonState(toggleFilesViewBtn, visible, 'Files');
 }
 
 function setInputPanelVisibility(visible, persist = true) {
     isInputVisible = visible;
-    inputBottom.classList.toggle('hidden', !visible);
-    gutterV.classList.toggle('hidden', !visible);
     if (persist) {
         localStorage.setItem(PANEL_VISIBILITY_STORAGE_KEYS.input, visible ? '1' : '0');
     }
-    setToggleButtonState(toggleInputViewBtn, visible, { visible: 'Input On', hidden: 'Input Off' });
+    if (visible) {
+        activeBottomTab = 'input';
+    } else if (activeBottomTab === 'input') {
+        activeBottomTab = resolveBottomTab(currentMode === 'exam' ? 'exam' : 'console', currentMode);
+    }
+    setToggleButtonState(toggleInputViewBtn, visible, 'Input');
+    applyWorkspacePanelLayout(currentMode);
 }
 
 function setOutputPanelVisibility(visible, persist = true) {
     isOutputVisible = visible;
-    rightPanel.classList.toggle('hidden', !visible);
-    gutterH.classList.toggle('hidden', !visible);
-    applyWorkspacePanelLayout(currentMode);
     if (persist) {
         localStorage.setItem(PANEL_VISIBILITY_STORAGE_KEYS.output, visible ? '1' : '0');
     }
-    setToggleButtonState(toggleOutputViewBtn, visible, { visible: 'Output On', hidden: 'Output Off' });
+    if (visible) {
+        if (!['console', 'history'].includes(activeBottomTab)) {
+            activeBottomTab = 'console';
+        }
+    } else if (['console', 'history'].includes(activeBottomTab)) {
+        activeBottomTab = resolveBottomTab(currentMode === 'exam' ? 'exam' : 'input', currentMode);
+    }
+    setToggleButtonState(toggleOutputViewBtn, visible, 'Output');
+    applyWorkspacePanelLayout(currentMode);
 }
 
-gutterH.addEventListener('mousedown', () => { isResizingH = true; gutterH.classList.add('active'); document.body.classList.add('resizing'); });
 gutterV.addEventListener('mousedown', () => { isResizingV = true; gutterV.classList.add('active'); document.body.classList.add('resizing'); });
 document.addEventListener('mousemove', (e) => {
-    if (isResizingH) {
-        const newWidth = (e.clientX / window.innerWidth) * 100;
-        if (newWidth > 20 && newWidth < 85) leftPanel.style.width = `${newWidth}%`;
-    }
-    if (isResizingV) {
-        const offsetTop = editorTop.getBoundingClientRect().top;
-        const newHeight = e.clientY - offsetTop;
-        if (newHeight > 100 && (window.innerHeight - e.clientY) > 80) {
-            inputBottom.style.height = `${window.innerHeight - e.clientY - 20}px`;
+    if (isResizingV && hasVisibleBottomDock(currentMode)) {
+        const shellBounds = leftPanel.getBoundingClientRect();
+        const newHeight = shellBounds.bottom - e.clientY;
+        const minHeight = currentMode === 'exam' ? 220 : 160;
+        const maxHeight = Math.max(minHeight, shellBounds.height - 180);
+        if (newHeight >= minHeight && newHeight <= maxHeight) {
+            rightPanel.style.height = `${newHeight}px`;
         }
     }
 });
 document.addEventListener('mouseup', () => {
-    if (isResizingH) {
-        persistLeftPanelWidth();
+    if (isResizingV) {
+        persistBottomPanelHeight();
     }
-    isResizingH = false;
     isResizingV = false;
-    gutterH.classList.remove('active');
     gutterV.classList.remove('active');
     document.body.classList.remove('resizing');
 });
-applyWorkspacePanelLayout('practice');
 setFilesPanelVisibility(areFilesVisible, false);
 setInputPanelVisibility(isInputVisible, false);
 setOutputPanelVisibility(isOutputVisible, false);
+applyWorkspacePanelLayout('practice');
 
 toggleFilesViewBtn.onclick = () => setFilesPanelVisibility(!areFilesVisible);
-toggleInputViewBtn.onclick = () => setInputPanelVisibility(!isInputVisible);
-toggleOutputViewBtn.onclick = () => setOutputPanelVisibility(!isOutputVisible);
+toggleInputViewBtn.onclick = () => {
+    if (isInputVisible && activeBottomTab === 'input') {
+        setInputPanelVisibility(false);
+        return;
+    }
+    if (!isInputVisible) {
+        setInputPanelVisibility(true);
+        return;
+    }
+    activeBottomTab = 'input';
+    applyWorkspacePanelLayout(currentMode);
+};
+toggleOutputViewBtn.onclick = () => {
+    if (isOutputVisible && ['console', 'history'].includes(activeBottomTab)) {
+        setOutputPanelVisibility(false);
+        return;
+    }
+    if (!isOutputVisible) {
+        setOutputPanelVisibility(true);
+        return;
+    }
+    activeBottomTab = 'console';
+    applyWorkspacePanelLayout(currentMode);
+};
 
 /* -------------------------
    Utility: escape HTML
@@ -1457,9 +1579,7 @@ function renderExamMode(data, code, options = {}) {
     const preserveTab = options.preserveTab === true;
     const previousActiveQuestionId = preserveSelection ? activeExamQuestionId : null;
     const previousRoomId = preserveSelection ? activeExamRoomId : null;
-    const previousTab = preserveTab
-        ? (examPanel.classList.contains('hidden') ? (historyPanel.classList.contains('hidden') ? 'console' : 'history') : 'exam')
-        : 'exam';
+    const previousTab = preserveTab ? (resolveBottomTab(activeBottomTab, currentMode) || activeBottomTab || 'exam') : 'exam';
 
     document.getElementById('joinRoomModal').classList.add('hidden');
     if (preserveSelection && previousActiveQuestionId && previousRoomId) {
@@ -1522,7 +1642,6 @@ function renderExamMode(data, code, options = {}) {
     assignedQuestionBank.forEach((_, questionId) => renderQuestionCardState(questionId));
 
     setTimeout(() => {
-        document.getElementById('tab-exam').classList.remove('hidden');
         if (activeExamQuestionId && assignedQuestionBank.has(activeExamQuestionId)) {
             window.setActiveQuestion(activeExamQuestionId, data.room_id, { focusExamTab: !preserveTab || previousTab === 'exam' });
         } else if (preserveSelection && assignedQuestionBank.size > 0 && (!preserveTab || previousTab === 'exam')) {
@@ -1530,6 +1649,8 @@ function renderExamMode(data, code, options = {}) {
             window.setActiveQuestion(firstQuestionId, data.room_id);
         } else if (!preserveTab || previousTab === 'exam') {
             tabExam.click();
+        } else if (previousTab === 'input') {
+            tabInput.click();
         } else if (previousTab === 'history') {
             tabHistory.click();
         } else {
@@ -1724,42 +1845,32 @@ document.addEventListener('keydown', (e) => {
 /* -------------------------
    Tabs logic
    ------------------------- */
-const tabConsole = document.getElementById('tab-console');
-const tabHistory = document.getElementById('tab-history');
-const tabExam = document.getElementById('tab-exam');
-const historyPanel = document.getElementById('historyPanel');
-const examPanel = document.getElementById('examPanel');
-
 window.updateTabUI = function(tabName) {
     if (tabName === 'console') tabConsole.click();
+    else if (tabName === 'input') tabInput.click();
     else if (tabName === 'history') tabHistory.click();
     else if (tabName === 'exam') tabExam.click();
 };
 
-function resetTabClasses() {
-    tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
-    tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50";
-    tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-700 uppercase tracking-widest transition focus:outline-none border-b-2 border-transparent bg-gray-50" + (isExamActive ? "" : " hidden");
-}
-
 tabConsole.onclick = () => {
     if (!isOutputVisible) setOutputPanelVisibility(true);
-    resetTabClasses();
-    tabConsole.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
-    terminalEl.classList.remove('hidden'); historyPanel.classList.add('hidden'); examPanel.classList.add('hidden');
+    activeBottomTab = 'console';
+    applyWorkspacePanelLayout(currentMode);
+};
+tabInput.onclick = () => {
+    if (!isInputVisible) setInputPanelVisibility(true);
+    activeBottomTab = 'input';
+    applyWorkspacePanelLayout(currentMode);
 };
 tabHistory.onclick = () => {
     if (!isOutputVisible) setOutputPanelVisibility(true);
-    resetTabClasses();
-    tabHistory.className = "flex-1 px-5 py-3 text-xs font-bold text-blue-600 border-b-2 border-blue-600 uppercase tracking-widest bg-white focus:outline-none";
-    historyPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); examPanel.classList.add('hidden'); fetchHistory();
+    activeBottomTab = 'history';
+    applyWorkspacePanelLayout(currentMode);
 };
 tabExam.onclick = () => {
     if (!isExamActive) return;
-    if (!isOutputVisible) setOutputPanelVisibility(true);
-    resetTabClasses();
-    tabExam.className = "flex-1 px-5 py-3 text-xs font-bold text-purple-600 border-b-2 border-purple-600 uppercase tracking-widest bg-white focus:outline-none";
-    examPanel.classList.remove('hidden'); terminalEl.classList.add('hidden'); historyPanel.classList.add('hidden');
+    activeBottomTab = 'exam';
+    applyWorkspacePanelLayout(currentMode);
 };
 
 /* -------------------------
@@ -2343,10 +2454,8 @@ function switchToPractice() {
     setInputPanelVisibility(isInputVisible, false);
     setFilesPanelVisibility(areFilesVisible, false);
     setOutputPanelVisibility(isOutputVisible, false);
-    
-    document.getElementById('tab-exam').classList.add('hidden');
-    
-    document.getElementById('tab-console').click();
+    activeBottomTab = resolveBottomTab(isOutputVisible ? 'console' : activeBottomTab, 'practice') || 'console';
+    applyWorkspacePanelLayout('practice');
     document.getElementById('examQuestionsList').innerHTML = '';
     document.getElementById('examQuestionViewer').innerHTML = '<p class="text-gray-400 italic text-center mt-10">Select a question from the left panel to view its details.</p>';
 }
@@ -2362,6 +2471,8 @@ function switchToExam() {
     setInputPanelVisibility(isInputVisible, false);
     setFilesPanelVisibility(areFilesVisible, false);
     setOutputPanelVisibility(isOutputVisible, false);
+    activeBottomTab = resolveBottomTab(activeBottomTab, 'exam') || 'exam';
+    applyWorkspacePanelLayout('exam');
 }
 
 /* -------------------------
