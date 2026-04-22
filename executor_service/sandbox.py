@@ -238,6 +238,7 @@ def _normalize_relpath(path_value):
 
 def _build_commands(language, entry_file):
     normalized_entry_file = _normalize_relpath(entry_file)
+    quoted_entry_file = shlex.quote(normalized_entry_file)
 
     if language == "python":
         return None, ["python3", normalized_entry_file]
@@ -248,9 +249,17 @@ def _build_commands(language, entry_file):
     if language == "php":
         return None, ["php", normalized_entry_file]
     if language == "cpp":
-        return ["/bin/sh", "-lc", "g++ -O3 $(find . -type f -name '*.cpp' | sort) -o out"], ["./out"]
+        return [
+            "/bin/sh",
+            "-lc",
+            f"g++ -O3 {quoted_entry_file} $(find . -type f -name '*.cpp' ! -path './{normalized_entry_file}' | sort) -o out",
+        ], ["./out"]
     if language == "c":
-        return ["/bin/sh", "-lc", "gcc -O3 $(find . -type f -name '*.c' | sort) -o out"], ["./out"]
+        return [
+            "/bin/sh",
+            "-lc",
+            f"gcc -O3 {quoted_entry_file} $(find . -type f -name '*.c' ! -path './{normalized_entry_file}' | sort) -o out",
+        ], ["./out"]
     if language == "go":
         return ["/bin/sh", "-lc", "go build -o out $(find . -type f -name '*.go' | sort)"], ["./out"]
     if language == "rust":

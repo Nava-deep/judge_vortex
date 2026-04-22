@@ -1352,6 +1352,27 @@ async function readJsonSafe(response) {
     }
 }
 
+function formatApiError(payload, fallbackMessage = 'Request failed.') {
+    if (!payload || typeof payload !== 'object') {
+        return fallbackMessage;
+    }
+
+    if (typeof payload.error === 'string' && payload.error.trim()) {
+        return payload.error.trim();
+    }
+
+    for (const [key, value] of Object.entries(payload)) {
+        if (Array.isArray(value) && value.length) {
+            return `${key}: ${String(value[0])}`;
+        }
+        if (typeof value === 'string' && value.trim()) {
+            return key === 'detail' ? value.trim() : `${key}: ${value.trim()}`;
+        }
+    }
+
+    return fallbackMessage;
+}
+
 async function fetchSubmissionStatus(submissionId) {
     const response = await fetch(`/api/submissions/${submissionId}/`, {
         headers: { 'Authorization': `Token ${token}` }
@@ -1911,9 +1932,8 @@ runBtnEl.onclick = async (e) => {
         const data = await readJsonSafe(res);
 
         if (!res.ok) {
-            const errData = data;
             clearRunSubmissionPending();
-            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Error: ${escapeHtml(errData.error || "Execution failed")}</div>`;
+            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Error: ${escapeHtml(formatApiError(data, "Execution failed"))}</div>`;
             return;
         }
 
@@ -1985,7 +2005,7 @@ submitBtnEl.onclick = async (e) => {
             }
         } else {
             clearExamQuestionSubmissionPending(activeExamQuestionId);
-            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(data.error || 'Unknown')}</div>`;
+            terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(formatApiError(data, 'Unknown'))}</div>`;
             applyQuestionVerdict(activeExamQuestionId, 'ERROR');
         }
     } catch (err) {
@@ -2012,6 +2032,10 @@ setInterval(() => {
 
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        if (e.repeat || isRunBusy() || runBtnEl.disabled) {
+            e.preventDefault();
+            return;
+        }
         e.preventDefault();
         runBtnEl.click();
     }

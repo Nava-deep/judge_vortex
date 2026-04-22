@@ -1163,6 +1163,32 @@ class SubmissionWorkspaceNormalizationTests(APITestCase):
         self.assertEqual(result['status'], 'SUCCESS')
         self.assertEqual(result['output'].strip(), 'hello from helper')
 
+    def test_cpp_workspace_uses_entry_file_with_helper_sources(self):
+        result = async_to_sync(core_views.run_code_in_sandbox)(
+            '#include <iostream>\n#include "helper.h"\n\nint main() {\n    std::cout << greet();\n}\n',
+            'cpp',
+            '',
+            3000,
+            files=[
+                {
+                    'path': 'src/main.cpp',
+                    'content': '#include <iostream>\n#include "helper.h"\n\nint main() {\n    std::cout << greet();\n}\n',
+                },
+                {
+                    'path': 'src/helper.cpp',
+                    'content': '#include "helper.h"\n\nconst char* greet() {\n    return "Fsdf";\n}\n',
+                },
+                {
+                    'path': 'src/helper.h',
+                    'content': 'const char* greet();\n',
+                },
+            ],
+            entry_file='src/main.cpp',
+        )
+
+        self.assertEqual(result['status'], 'SUCCESS')
+        self.assertEqual(result['output'].strip(), 'Fsdf')
+
     def test_build_testcases_splits_blank_line_delimited_cases(self):
         testcases = build_testcases('1\n\n2', '1\n\n4')
 
