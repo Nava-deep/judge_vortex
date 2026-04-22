@@ -76,6 +76,22 @@ LANGUAGE_ENTRY_FILES = {
     'typescript': 'main.ts',
     'sql': 'query.sql',
 }
+ENTRY_FILE_LANGUAGE_BY_EXTENSION = (
+    ('.py', 'python'),
+    ('.cpp', 'cpp'),
+    ('.cc', 'cpp'),
+    ('.cxx', 'cpp'),
+    ('.c', 'c'),
+    ('.java', 'java'),
+    ('.js', 'javascript'),
+    ('.ts', 'typescript'),
+    ('.rb', 'ruby'),
+    ('.go', 'go'),
+    ('.rs', 'rust'),
+    ('.php', 'php'),
+    ('.sql', 'sql'),
+)
+
 class ServiceUnavailable(APIException):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     default_detail = 'Judge Vortex is temporarily unavailable.'
@@ -276,6 +292,28 @@ def normalize_submission_files(language, code, files_payload, entry_file=None):
         raise serializers.ValidationError({'entry_file': 'The selected entry file was not found in the workspace.'})
 
     return normalized_files, resolved_entry_file, primary_file['content']
+
+
+def infer_language_from_entry_file(entry_file):
+    normalized_entry_file = sanitize_relative_file_path(entry_file)
+    if not normalized_entry_file:
+        return None
+
+    lower_path = normalized_entry_file.lower()
+    for suffix, language in ENTRY_FILE_LANGUAGE_BY_EXTENSION:
+        if lower_path.endswith(suffix):
+            return language
+    return None
+
+
+def validate_submission_language(language, entry_file):
+    normalized_language = str(language or 'python').strip().lower() or 'python'
+    inferred_language = infer_language_from_entry_file(entry_file)
+    if inferred_language and inferred_language != normalized_language:
+        raise serializers.ValidationError({
+            'language': f'The selected language must match the entry file ({entry_file} -> {inferred_language}).'
+        })
+    return normalized_language
 
 
 def normalize_judge_cases_payload(judge_cases_payload):
@@ -846,12 +884,16 @@ class StudentWorkspaceSnapshotView(APIView):
             request.data.get('files'),
             request.data.get('entry_file') or '',
         )
+        submission_language = validate_submission_language(
+            request.data.get('language') or 'python',
+            resolved_entry_file,
+        )
 
         snapshot = upsert_workspace_snapshot(
             room=participant.room,
             student=request.user,
             question=question,
-            language=request.data.get('language') or 'python',
+            language=submission_language,
             code=primary_code,
             files=normalized_files,
             entry_file=resolved_entry_file,
@@ -1218,6 +1260,10 @@ class SubmissionCreateView(generics.CreateAPIView):
             incoming_files,
             incoming_entry_file,
         )
+        submission_language = validate_submission_language(
+            self.request.data.get('language') or 'python',
+            resolved_entry_file,
+        )
         submission_mode = 'hidden' if question_id else 'visible'
 
         # Save the submission to the DB
@@ -1226,6 +1272,7 @@ class SubmissionCreateView(generics.CreateAPIView):
                 user=self.request.user,
                 room_id=room_id,
                 question_id=question_id,
+                language=submission_language,
                 code=primary_code,
                 files=normalized_files,
                 entry_file=resolved_entry_file,

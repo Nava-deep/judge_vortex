@@ -417,6 +417,7 @@ const runBtnEl = document.getElementById('runBtn');
 const submitBtnEl = document.getElementById('submitBtn');
 const finishExamBtnEl = document.getElementById('finishExamBtn');
 const examRefreshBtnEl = document.getElementById('examRefreshBtn');
+const languageSelectEl = document.getElementById('language');
 
 let currentMode = "practice"; 
 let questionVerdicts = new Map(); // Tracks state: EVALUATING, PASSED, WRONG_ANSWER
@@ -473,6 +474,19 @@ const languagePrimaryFiles = {
     'php': 'main.php',
     'sql': 'query.sql',
 };
+const languagePathMatchers = {
+    python: [/\.py$/i],
+    cpp: [/\.(cpp|cc|cxx)$/i],
+    c: [/\.c$/i],
+    java: [/\.java$/i],
+    javascript: [/\.js$/i],
+    typescript: [/\.ts$/i],
+    ruby: [/\.rb$/i],
+    go: [/\.go$/i],
+    rust: [/\.rs$/i],
+    php: [/\.php$/i],
+    sql: [/\.sql$/i],
+};
 
 const languageConf = new Compartment();
 const editableConf = new Compartment();
@@ -493,6 +507,18 @@ const getLangExtension = (langStr) => {
 
 function getPrimaryFileForLanguage(language) {
     return languagePrimaryFiles[language] || 'main.txt';
+}
+
+function inferLanguageFromPath(pathValue) {
+    const normalizedPath = sanitizeWorkspacePath(pathValue);
+    if (!normalizedPath) return null;
+    const lowerPath = normalizedPath.toLowerCase();
+    for (const [language, matchers] of Object.entries(languagePathMatchers)) {
+        if (matchers.some((matcher) => matcher.test(lowerPath))) {
+            return language;
+        }
+    }
+    return null;
 }
 
 function resolveWorkspaceEntryFile(language, files = [], preferredEntryFile = null) {
@@ -575,6 +601,27 @@ function normalizeWorkspaceFiles(language, files = null, primaryContent = null) 
     return normalized;
 }
 
+function getWorkspaceFilesForLanguage(language) {
+    return workspaceFiles.filter((file) => inferLanguageFromPath(file.path) === language);
+}
+
+function getPreferredWorkspaceFileForLanguage(language, preferredPath = null) {
+    const normalizedPreferredPath = sanitizeWorkspacePath(preferredPath);
+    const languageFiles = getWorkspaceFilesForLanguage(language);
+    if (!languageFiles.length) return null;
+
+    if (normalizedPreferredPath && languageFiles.some((file) => file.path === normalizedPreferredPath)) {
+        return normalizedPreferredPath;
+    }
+
+    const defaultPath = getPrimaryFileForLanguage(language);
+    if (languageFiles.some((file) => file.path === defaultPath)) {
+        return defaultPath;
+    }
+
+    return languageFiles[0].path;
+}
+
 function getAllWorkspaceFolders() {
     const merged = new Set(workspaceFolders);
     workspaceFiles.forEach((file) => {
@@ -609,7 +656,7 @@ function syncEntryControls() {
     const entryBadgeEl = document.getElementById('entryFileBadge');
     const entryBtnEl = document.getElementById('setEntryFileBtn');
     const workspaceMetaEl = document.getElementById('workspaceMeta');
-    const entryLabel = workspaceEntryFilePath || getPrimaryFileForLanguage(document.getElementById('language').value);
+    const entryLabel = workspaceEntryFilePath || getPrimaryFileForLanguage(languageSelectEl.value);
 
     if (activeFileLabelEl) activeFileLabelEl.innerText = activeFilePath || entryLabel;
     if (entryBadgeEl) {
@@ -712,13 +759,13 @@ async function importLocalFiles(fileList) {
         ...workspaceFolders,
         ...importedFiles.flatMap((file) => getAncestorFolderPaths(getParentFolderPath(file.path))),
     ]);
-    workspaceEntryFilePath = resolveWorkspaceEntryFile(document.getElementById('language').value, workspaceFiles, workspaceEntryFilePath);
+    workspaceEntryFilePath = resolveWorkspaceEntryFile(languageSelectEl.value, workspaceFiles, workspaceEntryFilePath);
     setActiveFile(importedFiles[0].path);
 }
 
 function getWorkspacePayload() {
     saveActiveFileContent();
-    const language = document.getElementById('language').value;
+    const language = languageSelectEl.value;
     workspaceEntryFilePath = resolveWorkspaceEntryFile(language, workspaceFiles, workspaceEntryFilePath);
     const entryPath = workspaceEntryFilePath;
     const primaryFile = workspaceFiles.find((file) => file.path === entryPath) || workspaceFiles[0] || { content: editorView.state.doc.toString() };
@@ -732,7 +779,7 @@ function getWorkspacePayload() {
 /* -------------------------
    Editor init
    ------------------------- */
-const initialLang = document.getElementById('language').value || 'python';
+const initialLang = languageSelectEl.value || 'python';
 const editorView = new EditorView({
     state: EditorState.create({
         doc: boilerplate[initialLang] || boilerplate['python'],
@@ -748,37 +795,83 @@ const editorView = new EditorView({
 
 resetWorkspaceFiles(initialLang, null, getPrimaryFileForLanguage(initialLang), boilerplate[initialLang] || boilerplate['python']);
 
+function syncEditorLanguage(language, { updateSelector = true } = {}) {
+    const nextLanguage = String(language || initialLang || 'python');
+    if (updateSelector && languageSelectEl.value !== nextLanguage) {
+        languageSelectEl.value = nextLanguage;
+    }
+    editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(nextLanguage)) });
+    languageSelectEl.dataset.previous = nextLanguage;
+}
+
+function syncLanguageToEntryFile(entryPath) {
+    const inferredLanguage = inferLanguageFromPath(entryPath);
+    if (!inferredLanguage || inferredLanguage === languageSelectEl.value) return false;
+    syncEditorLanguage(inferredLanguage);
+    return true;
+}
+
+function getEntryFileLanguageMismatch(entryPath = workspaceEntryFilePath, selectedLanguage = languageSelectEl.value) {
+    const normalizedEntryPath = sanitizeWorkspacePath(entryPath);
+    const inferredLanguage = inferLanguageFromPath(normalizedEntryPath);
+    if (!normalizedEntryPath || !inferredLanguage || !selectedLanguage || inferredLanguage === selectedLanguage) {
+        return null;
+    }
+    return { entryPath: normalizedEntryPath, inferredLanguage, selectedLanguage };
+}
+
+function ensureEntryFileLanguageMatches(entryPath = workspaceEntryFilePath, selectedLanguage = languageSelectEl.value) {
+    const mismatch = getEntryFileLanguageMismatch(entryPath, selectedLanguage);
+    if (!mismatch) return true;
+
+    terminalEl.innerHTML = `
+        <div class="text-amber-500 font-mono">
+            Select <strong>${escapeHtml(mismatch.inferredLanguage)}</strong> before running <strong>${escapeHtml(mismatch.entryPath)}</strong>.
+        </div>
+    `;
+    return false;
+}
+
 function setEditorEditable(isEditable) {
     editorView.dispatch({
         effects: editableConf.reconfigure(EditorView.editable.of(isEditable))
     });
 }
 
-document.getElementById('language').addEventListener('change', (e) => {
+languageSelectEl.addEventListener('change', (e) => {
     const lang = e.target.value;
     saveActiveFileContent();
-    editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(lang)) });
-    const cur = workspaceFiles.find((file) => file.path === activeFilePath)?.content || editorView.state.doc.toString();
-    const clean = (s) => s.replace(/\s+/g, '');
-    const isUntouchedBoilerplate = Object.values(boilerplate).some(bp => clean(bp) === clean(cur));
-    const onlyPrimaryFile = workspaceFiles.length === 1 && workspaceFiles[0].path === getPrimaryFileForLanguage(document.getElementById('language').dataset.previous || initialLang);
-    if (isUntouchedBoilerplate || clean(cur) === '' || onlyPrimaryFile) {
+    syncEditorLanguage(lang, { updateSelector: false });
+
+    if (!workspaceFiles.length) {
         resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang], []);
-    } else if (confirm(`Switching to ${lang} resets the workspace files for that language. Continue?`)) {
-        resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang], []);
-    } else {
-        e.target.value = document.getElementById('language').dataset.previous || initialLang;
-        editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(e.target.value)) });
         return;
     }
-    document.getElementById('language').dataset.previous = lang;
+
+    const matchingEntryFile = getPreferredWorkspaceFileForLanguage(lang, workspaceEntryFilePath)
+        || getPreferredWorkspaceFileForLanguage(lang, activeFilePath);
+
+    if (matchingEntryFile) {
+        workspaceEntryFilePath = matchingEntryFile;
+        setActiveFile(matchingEntryFile);
+        return;
+    }
+
+    if (!activeFilePath || !workspaceFiles.some((file) => file.path === activeFilePath)) {
+        workspaceEntryFilePath = resolveWorkspaceEntryFile(lang, workspaceFiles, workspaceEntryFilePath);
+        setActiveFile(workspaceEntryFilePath || workspaceFiles[0]?.path);
+        return;
+    }
+
+    renderFileExplorer();
 });
 
-document.getElementById('language').dataset.previous = initialLang;
+languageSelectEl.dataset.previous = initialLang;
 
 document.getElementById('setEntryFileBtn').onclick = () => {
     if (!activeFilePath) return;
     workspaceEntryFilePath = activeFilePath;
+    syncLanguageToEntryFile(activeFilePath);
     renderFileExplorer();
 };
 
@@ -815,7 +908,7 @@ document.getElementById('deleteFileBtn').onclick = () => {
     if (activeFilePath === workspaceEntryFilePath) return;
     if (!confirm(`Delete ${activeFilePath}?`)) return;
     workspaceFiles = workspaceFiles.filter((file) => file.path !== activeFilePath);
-    workspaceEntryFilePath = resolveWorkspaceEntryFile(document.getElementById('language').value, workspaceFiles, workspaceEntryFilePath);
+    workspaceEntryFilePath = resolveWorkspaceEntryFile(languageSelectEl.value, workspaceFiles, workspaceEntryFilePath);
     const nextFile = workspaceFiles.find((file) => file.path === workspaceEntryFilePath) || workspaceFiles[0];
     activeFilePath = nextFile.path;
     editorView.dispatch({
@@ -1237,15 +1330,15 @@ function renderExamSubmissionPlaceholder(questionId) {
 }
 
 function clearSubmissionTracking(submissionId) {
-    const timerId = submissionPollers.get(submissionId);
-    if (timerId) {
-        clearInterval(timerId);
+    if (submissionPollers.has(submissionId)) {
+        const timerId = submissionPollers.get(submissionId);
+        clearTimeout(timerId);
         submissionPollers.delete(submissionId);
     }
 }
 
 function clearAllSubmissionTracking() {
-    submissionPollers.forEach((timerId) => clearInterval(timerId));
+    submissionPollers.forEach((timerId) => clearTimeout(timerId));
     submissionPollers.clear();
     activeRunSubmissionId = null;
     pendingExamQuestionSubmissions.clear();
@@ -1310,6 +1403,23 @@ function beginSubmissionTracking(submissionId, questionId = null) {
 
     let attempts = 0;
     let requestInFlight = false;
+    let resolved = false;
+
+    const getNextPollDelay = () => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            if (attempts < 4) return 1400;
+            if (attempts < 12) return 2200;
+            return 3500;
+        }
+        if (attempts < 4) return 700;
+        if (attempts < 12) return 1400;
+        return 2400;
+    };
+
+    const scheduleNextPoll = () => {
+        const timerId = setTimeout(poll, getNextPollDelay());
+        submissionPollers.set(numericSubmissionId, timerId);
+    };
 
     const poll = async () => {
         if (requestInFlight) return;
@@ -1321,11 +1431,13 @@ function beginSubmissionTracking(submissionId, questionId = null) {
             if (submission) {
                 handleSubmissionResolution(submission);
                 if (isTerminalSubmissionStatus(submission.status)) {
+                    resolved = true;
                     return;
                 }
             }
 
-            if (attempts >= 90) {
+            if (attempts >= 40) {
+                resolved = true;
                 clearSubmissionTracking(numericSubmissionId);
                 if (pendingEvaluations.has(numericSubmissionId)) {
                     const questionIdFromPending = pendingEvaluations.get(numericSubmissionId);
@@ -1338,16 +1450,19 @@ function beginSubmissionTracking(submissionId, questionId = null) {
                 terminalEl.innerHTML = '<div class="text-red-500 font-mono">Execution is taking longer than expected. Please retry the submission.</div>';
             }
         } catch (err) {
-            if (attempts >= 90) {
+            if (attempts >= 40) {
+                resolved = true;
                 clearSubmissionTracking(numericSubmissionId);
             }
         } finally {
             requestInFlight = false;
+            if (!resolved && submissionPollers.has(numericSubmissionId)) {
+                scheduleNextPoll();
+            }
         }
     };
 
-    const intervalId = setInterval(poll, 600);
-    submissionPollers.set(numericSubmissionId, intervalId);
+    submissionPollers.set(numericSubmissionId, null);
     poll();
 }
 
@@ -1413,13 +1528,13 @@ function persistCurrentCode() {
         folders: [...workspaceFolders],
         active_file: activeFilePath,
         entry_file: workspaceEntryFilePath,
-        language: document.getElementById('language').value,
+        language: languageSelectEl.value,
         ts: Date.now()
     };
     try { localStorage.setItem('vortex_saved_code', JSON.stringify(savedCode)); } catch (e) { }
     syncActiveExamSnapshot();
 }
-setInterval(persistCurrentCode, 2000);
+setInterval(persistCurrentCode, 4000);
 
 function buildActiveExamSnapshotPayload() {
     if (!activeExamRoomId || !activeExamQuestionId || currentMode !== 'exam' || !isExamActive || isDisqualified) {
@@ -1433,7 +1548,7 @@ function buildActiveExamSnapshotPayload() {
         code: workspacePayload.code,
         files: workspacePayload.files,
         entry_file: workspacePayload.entry_file,
-        language: document.getElementById('language').value,
+        language: languageSelectEl.value,
     };
 }
 
@@ -1467,19 +1582,17 @@ function restoreSavedCode(roomId, qId) {
     const key = `${roomId}_${qId}`;
     if (savedCode[key]) {
         const saved = savedCode[key];
-        if (saved.language && document.getElementById('language').value !== saved.language) {
-            document.getElementById('language').value = saved.language;
-            document.getElementById('language').dataset.previous = saved.language;
-            editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(saved.language)) });
+        if (saved.language && languageSelectEl.value !== saved.language) {
+            syncEditorLanguage(saved.language);
         }
         resetWorkspaceFiles(
-            saved.language || document.getElementById('language').value,
+            saved.language || languageSelectEl.value,
             saved.files,
             saved.active_file,
             saved.code || boilerplate[saved.language] || '',
             saved.folders || []
         );
-        workspaceEntryFilePath = resolveWorkspaceEntryFile(saved.language || document.getElementById('language').value, workspaceFiles, saved.entry_file || saved.active_file);
+        workspaceEntryFilePath = resolveWorkspaceEntryFile(saved.language || languageSelectEl.value, workspaceFiles, saved.entry_file || saved.active_file);
         renderFileExplorer();
         return true;
     }
@@ -1767,8 +1880,9 @@ runBtnEl.onclick = async (e) => {
     if (isRunBusy()) return;
     
     document.getElementById('tab-console').click();
-    const lang = document.getElementById('language').value;
+    const lang = languageSelectEl.value;
     const workspacePayload = getWorkspacePayload();
+    if (!ensureEntryFileLanguageMatches(workspacePayload.entry_file, lang)) return;
     const activeQuestion = activeExamQuestionId ? getQuestionMeta(activeExamQuestionId) : null;
     const visibleJudgeCases = currentMode === 'exam' && activeQuestion ? (activeQuestion.visible_testcases || []) : [];
     const input = currentMode === 'exam' && visibleJudgeCases.length > 0
@@ -1829,13 +1943,15 @@ submitBtnEl.onclick = async (e) => {
     if (currentMode !== "exam" || !activeExamQuestionId) return; 
     if (isCurrentExamQuestionPendingSubmission()) return;
 
+    const workspacePayload = getWorkspacePayload();
+    if (!ensureEntryFileLanguageMatches(workspacePayload.entry_file, languageSelectEl.value)) return;
+
     applyQuestionVerdict(activeExamQuestionId, 'EVALUATING');
     markExamQuestionSubmissionPending(activeExamQuestionId);
     document.getElementById('tab-console').click();
     renderExamSubmissionPlaceholder(activeExamQuestionId);
 
     try {
-        const workspacePayload = getWorkspacePayload();
         await syncActiveExamSnapshot(true);
         const res = await fetch('/api/submissions/submit/', {
             method: 'POST',
@@ -1844,7 +1960,7 @@ submitBtnEl.onclick = async (e) => {
                 code: workspacePayload.code,
                 files: workspacePayload.files,
                 entry_file: workspacePayload.entry_file,
-                language: document.getElementById('language').value,
+                language: languageSelectEl.value,
                 user_input: "", 
                 time_limit_ms: 10000,
                 room_id: activeExamRoomId,
@@ -2001,9 +2117,7 @@ function loadPastCode(id) {
         window.setActiveQuestion(submissionQuestionId, activeExamRoomId, { focusExamTab: false });
     }
 
-    document.getElementById('language').value = sub.language;
-    document.getElementById('language').dataset.previous = sub.language;
-    editorView.dispatch({ effects: languageConf.reconfigure(getLangExtension(sub.language)) });
+    syncEditorLanguage(sub.language);
     resetWorkspaceFiles(sub.language, sub.files, sub.entry_file || sub.active_file, sub.code);
     workspaceEntryFilePath = resolveWorkspaceEntryFile(sub.language, workspaceFiles, sub.entry_file);
     renderFileExplorer();
@@ -2376,7 +2490,7 @@ window.setActiveQuestion = (qId, roomId, options = {}) => {
 
     const restored = restoreSavedCode(resolvedRoomId, qId);
     if (!restored) {
-        const lang = document.getElementById('language').value;
+        const lang = languageSelectEl.value;
         resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang] || '');
     }
 
@@ -2485,7 +2599,7 @@ async function disqualifyStudent() {
     }
     if (activeExamRoomId && activeExamQuestionId) {
         const code = editorView.state.doc.toString();
-        const lang = document.getElementById('language').value;
+        const lang = languageSelectEl.value;
         try {
             await fetch('/api/submissions/submit/', {
                 method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Token ${token}` },

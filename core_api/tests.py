@@ -591,6 +591,26 @@ class SubmissionCreateHiddenCasesTests(APITestCase):
             ExamEvent.objects.filter(submission=submission, event_type='submission.queued').exists()
         )
 
+    @patch('core_api.views.KafkaProducer')
+    def test_practice_run_rejects_entry_file_language_mismatch(self, kafka_producer_cls):
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'print("hello")',
+                'files': [
+                    {'path': 'main.cpp', 'content': '#include <iostream>\nint main() { std::cout << 42 << "\\n"; return 0; }'},
+                ],
+                'entry_file': 'main.cpp',
+                'language': 'python',
+                'room_id': self.room.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('language', response.data)
+        kafka_producer_cls.assert_not_called()
+
     @patch('core_api.views.get_missing_runtime_tools', return_value=['sqlite3'])
     @patch('core_api.views.KafkaProducer')
     def test_practice_run_falls_back_to_queue_when_inline_runtime_is_missing(self, kafka_producer_cls, _missing_runtime_tools):
@@ -1117,6 +1137,15 @@ class SubmissionWorkspaceNormalizationTests(APITestCase):
                 'print(42)',
                 [{'path': '../secrets.py', 'content': 'nope'}],
             )
+
+    def test_validate_submission_language_accepts_matching_entry_file(self):
+        language = core_views.validate_submission_language('cpp', 'src/main.cpp')
+
+        self.assertEqual(language, 'cpp')
+
+    def test_validate_submission_language_rejects_mismatched_entry_file(self):
+        with self.assertRaisesMessage(serializers.ValidationError, 'must match the entry file'):
+            core_views.validate_submission_language('python', 'src/main.cpp')
 
     def test_python_workspace_files_can_import_each_other(self):
         result = async_to_sync(core_views.run_code_in_sandbox)(
