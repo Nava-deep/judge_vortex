@@ -1,0 +1,47 @@
+{
+  "run_id": "20260423T112713Z_judge_vortex_2000_users_10000_submissions_live_failure",
+  "status": "overloaded",
+  "started_at": "2026-04-23T16:58:00+05:30",
+  "stopped_at": "2026-04-23T17:09:00+05:30",
+  "target_url": "https://judgevortex.duckdns.org",
+  "candidates_targeted": 2000,
+  "submissions_targeted": 10000,
+  "accepted_submissions": null,
+  "verdicts_observed": null,
+  "health_before": {
+    "judge_vortex_ready": "ok",
+    "judge_vortex_web": "active",
+    "nginx": "active",
+    "free_memory_mb": 120,
+    "load_average": [0.21, 0.13, 0.12]
+  },
+  "health_after": {
+    "https_ready": "connect timeout (>5s)",
+    "https_login": "connect timeout (>5s)",
+    "ssh": "connection timed out during banner exchange"
+  },
+  "topology": {
+    "instance_type": "t3.small",
+    "vcpus": 2,
+    "memory_mb": 1907,
+    "executor_services": 2,
+    "kafka_partitions": 8,
+    "sandbox_slots": 32,
+    "monitoring_enabled": true
+  },
+  "baseline_reference": {
+    "file": "20260419T123036Z_judge_vortex_1024_join_submit_stable_manual.json",
+    "candidates_targeted": 1024,
+    "accepted_submissions": 1024,
+    "final_passed_submissions": 1024,
+    "submission_window_seconds": 28.83,
+    "submission_ingest_rate_per_sec": 35.52,
+    "avg_execution_ms": 13.49,
+    "avg_end_to_end_seconds": 61.82
+  },
+  "notes": [
+    "This was a real live benchmark against the current EC2 deployment, not a local synthetic run.",
+    "The test used 2000 pre-seeded student users with 5 judged Python submissions each for a 10000-submission target.",
+    "The public app and SSH stopped responding before the run completed, so the current single-node deployment does not sustain this burst cleanly."
+  ]
+}

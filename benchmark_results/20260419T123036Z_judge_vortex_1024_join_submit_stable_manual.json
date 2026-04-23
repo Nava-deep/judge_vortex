@@ -1,0 +1,20 @@
+{
+  "run_id": "20260419T123036Z_judge_vortex_1024_join_submit_stable_manual",
+  "candidates_targeted": 1024,
+  "accepted_submissions": 1024,
+  "final_passed_submissions": 1024,
+  "submission_window_seconds": 28.83,
+  "submission_ingest_rate_per_sec": 35.52,
+  "avg_execution_ms": 13.49,
+  "p95_execution_ms": 19,
+  "p99_execution_ms": 32,
+  "avg_end_to_end_seconds": 61.82,
+  "language_mix": "python",
+  "topology": {
+    "executor_services": 2,
+    "kafka_partitions": 8,
+    "sandbox_slots": 32,
+    "supported_languages": 11
+  },
+  "notes": "Room 4 stable benchmark on restarted local stack; 1024 pre-seeded virtual candidates joined and submitted one Python solution each."
+}
