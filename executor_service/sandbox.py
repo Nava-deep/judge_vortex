@@ -55,6 +55,7 @@ COMMON_RUNTIME_TOOL_DIRS = (
     "/opt/homebrew/bin",
 )
 NATIVE_MEMORY_BYTES_BY_LANGUAGE = {
+    "go": max(MAX_MEMORY_BYTES, 1536 * 1024 * 1024),
     "javascript": max(MAX_MEMORY_BYTES, 768 * 1024 * 1024),
     "typescript": max(MAX_MEMORY_BYTES, 768 * 1024 * 1024),
     "java": max(MAX_MEMORY_BYTES, 512 * 1024 * 1024),

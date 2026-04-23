@@ -16,6 +16,7 @@ from . import views as core_views
 from .integrations import ExternalRateLimitResult
 from .judging import build_testcases
 from .models import ExamEvent, ExamQuestion, ExamRoom, ExamWorkspaceSnapshot, RoomParticipant, Submission
+from executor_service import sandbox as executor_sandbox
 from execution_routing import get_submission_topic
 
 
@@ -1218,6 +1219,12 @@ class SubmissionWorkspaceNormalizationTests(APITestCase):
 
         self.assertEqual(result['status'], 'SUCCESS')
         self.assertEqual(result['output'].strip(), 'Fsdf')
+
+    def test_go_native_inline_memory_limit_is_raised(self):
+        self.assertGreater(
+            executor_sandbox._get_native_memory_bytes('go'),
+            executor_sandbox.MAX_MEMORY_BYTES,
+        )
 
     def test_build_testcases_splits_blank_line_delimited_cases(self):
         testcases = build_testcases('1\n\n2', '1\n\n4')
