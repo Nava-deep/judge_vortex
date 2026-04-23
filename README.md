@@ -1,141 +1,44 @@
 # Judge Vortex
 
-<div align="center">
+Judge Vortex is a proctored coding-exam platform with asynchronous judging, real-time verdict delivery, teacher moderation tools, and platform integrations for runtime configuration and distributed submission control.
 
-**A distributed code execution platform for proctored coding exams, built around Kafka worker queues, Docker-isolated execution, autoscaling worker controls, and real-time verdict delivery.**
+It is built for the kind of environment where many students submit code at the same time, teachers need live visibility into activity, and code execution must stay isolated from the web request path.
 
-[![Django](https://img.shields.io/badge/Django-5.2-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
-[![DRF](https://img.shields.io/badge/DRF-API-CB2D3E?style=for-the-badge)](https://www.django-rest-framework.org/)
-[![Channels](https://img.shields.io/badge/Channels-WebSockets-0F172A?style=for-the-badge)](https://channels.readthedocs.io/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Primary%20DB-336791?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Redis](https://img.shields.io/badge/Redis-Realtime%20Layer-DC382D?style=for-the-badge&logo=redis&logoColor=white)](https://redis.io/)
-[![Kafka](https://img.shields.io/badge/Kafka-Async%20Queue-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
-[![Docker](https://img.shields.io/badge/Docker-7--Service%20Stack-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-[![Sandbox](https://img.shields.io/badge/Sandbox-isolate%20based-111827?style=for-the-badge)](./executor_service/sandbox.py)
+## What It Does
 
-</div>
+Judge Vortex covers the full exam workflow:
 
----
+- teacher-managed rooms and question sets
+- student workspaces with multi-file submissions and entry-file selection
+- `Run Test` and final `Submit` flows
+- realtime verdict updates over WebSockets
+- teacher-side monitoring, moderation, block/unblock, kick, and audit events
+- suspicious activity signals and room integrity controls
 
-## Overview
+The judging path is asynchronous by design:
 
-Judge Vortex is a distributed code execution platform designed for **timed coding exams**, **teacher-led proctoring**, and **real-time verdict delivery**.
+1. the web tier validates and stores the submission
+2. the job is published to Kafka
+3. executor workers compile and run code inside isolated sandboxes
+4. final verdicts are written back to the application
+5. students receive live status updates in the UI
 
-Instead of executing code inside the web request path, the platform persists submissions first, publishes them to Kafka, evaluates them in Dockerized `isolate` workers, retries failed jobs safely, escalates poisoned jobs to a dead-letter topic, and streams verdicts back to students over WebSockets.
+## Platform Role
 
-That design makes the project much closer to a real backend/distributed-systems system than a simple coding playground.
+Judge Vortex is the public-facing service in a three-project platform:
 
-## Control Plane Integration
+- `Judge Vortex`: exam and judging application
+- `Config Control Plane`: runtime configuration, staged rollout, rollback, and live config delivery
+- `DistributedRateLimiter`: submission control and shared rate-limit decisions
 
-Judge Vortex can now participate in the three-project platform flow:
+In the deployed platform, Judge Vortex can:
 
-- `Config Control Plane` publishes runtime config under `judge-vortex.runtime`
-- `DistributedRateLimiter` exposes an internal `/internal/evaluate` API for submission decisions
-- Judge Vortex reads the runtime config, checks queue depth, and calls the limiter for `/api/submissions/submit/` when the queue is busy or when the config switches the limiter to `always`
+- resolve runtime configuration from Config Control Plane
+- switch limiter behavior through `judge-vortex.runtime`
+- consult DistributedRateLimiter for submission decisions when the queue is under pressure
+- expose unified metrics for application health, judging, and traffic behavior
 
-Relevant environment variables are documented in [.env.example](./.env.example).
-
-## 30-Second Recruiter Summary
-
-If you're scanning this repository quickly, the headline is:
-
-- built a **distributed online judge** instead of a synchronous compile-and-run app
-- designed a **7-service platform** around Django, PostgreSQL, Redis, Kafka, Docker, and isolated executors
-- supports **11 languages**, **8 Kafka partitions**, and **32 isolate boxes** in the local production-style stack
-- combines **real-time systems**, **execution isolation**, **retry/DLQ handling**, **suspicious execution detection**, and **platform observability** in one project
-
-## Engineering Highlights At a Glance
-
-| Area | Implementation |
-| --- | --- |
-| Web/API layer | Django 5 + DRF |
-| Realtime layer | Channels + Redis |
-| Primary database | PostgreSQL |
-| Async execution path | Kafka-backed judging pipeline |
-| Execution isolation | Linux `isolate` sandbox |
-| Executor topology | 2 executor services (`core`, `java`) |
-| Queue parallelism | 8 Kafka partitions |
-| Sandbox capacity | 32 isolate boxes |
-| Retry handling | bounded redelivery + dead-letter topic escalation |
-| Worker scaling | queue-lag-driven autoscaler control loop |
-| Language coverage | 11 languages |
-| Submission model | Multi-file workspaces with entry-file routing |
-| Moderation | block / unblock / kick / lockout + suspicious event audit trail |
-| Observability | Prometheus metrics + audit events + lifecycle logs |
-
-## What the System Already Demonstrates
-
-- Django 5 + Django REST Framework for the web and API layer
-- Django Channels + Redis for live updates and room-event delivery
-- PostgreSQL as the primary application database
-- Kafka-backed asynchronous submission processing
-- Two executor services with language-based routing
-- Linux `isolate` sandbox integration for code execution
-- bounded retry + dead-letter handling for failed execution jobs
-- queue-lag-based worker autoscaling control loop
-- Multi-file student workspaces with explicit entry-file handling
-- Visible vs hidden testcase support
-- Teacher room management, moderation, lockouts, and submission inspection
-- suspicious execution pattern detection for burst submissions, failure storms, and cross-question code reuse
-- Audit events for major room, participant, and submission actions
-- Prometheus metrics and Grafana/Prometheus infrastructure support
-- WebSocket-driven student verdict updates
-
-## Why This Project Is Resume-Worthy
-
-Judge Vortex is intentionally built to showcase the kind of backend/platform concepts that are strong signals for internships and distributed-systems interviews:
-
-- asynchronous processing and queue-based decoupling
-- secure code execution outside the request lifecycle
-- real-time state delivery to connected clients
-- failure handling and dependency health checks
-- operational observability through metrics and structured logs
-- a domain model that reflects real product constraints rather than toy CRUD
-
-## Why This Is More Than a CRUD Project
-
-Judge Vortex demonstrates the kind of engineering tradeoffs that come up in real backend systems:
-
-- decoupling user-facing latency from heavy background work
-- routing work across specialized workers instead of one generic process
-- preserving correctness under worker restarts and dependency hiccups
-- exposing health, metrics, and audit data so the platform is debuggable
-- balancing exam integrity, realtime UX, and operational safety in the same system
-
-## Core Product Capabilities
-
-### Problem and Exam Domain
-
-- Teacher-managed exam rooms with room codes
-- Question pool creation and question CRUD
-- Visible testcase authoring for guided iteration
-- Hidden testcase authoring for final evaluation
-- Room start time, end time, and join deadline scheduling
-- Randomized per-student question assignment
-- Rejoin control and room lockouts after moderation or auto-disqualification
-
-### Submission Flow
-
-- Multi-file submissions with nested paths and entry-file selection
-- `Run Test` flow for visible cases
-- `Submit` flow for hidden judge cases
-- Persistent submission records before dispatch
-- Async Kafka dispatch from the web tier to executor workers
-- Bounded redelivery when a worker fails before durable completion
-- Dead-letter escalation for poisoned jobs that exceed retry attempts
-- Verdict persistence and live verdict broadcast back to the student
-- Verdicts including `PASSED`, `WRONG_ANSWER`, `TLE`, `MLE`, `RUNTIME_ERROR`, `COMPILATION_ERROR`, and `SYSTEM_ERROR`
-
-### Proctoring and Moderation
-
-- Teacher participant monitoring
-- Kick, block, unblock, and lock actions
-- Automatic lockout after fullscreen/tab-violation timeout
-- Room event timeline for major actions
-- Suspicious execution signals for rapid submission bursts, repeated execution failures, and identical code reused across different questions
-- Participant state and solved-question restoration on resume
-
-## High-Level Architecture
+## Core Architecture
 
 ```mermaid
 flowchart LR
@@ -145,353 +48,105 @@ flowchart LR
     Django --> Kafka["Kafka Submission Topics"]
     Kafka --> CoreExec["Executor Core"]
     Kafka --> JavaExec["Executor Java"]
-    CoreExec --> Isolate["Linux isolate Sandbox"]
-    JavaExec --> Isolate
+    CoreExec --> Sandbox["isolate Sandbox"]
+    JavaExec --> Sandbox
     CoreExec --> Django
     JavaExec --> Django
     Django --> Browser
-    Prometheus["Prometheus"] --> Django
-    Prometheus --> CoreExec
-    Prometheus --> JavaExec
-    Grafana["Grafana"] --> Prometheus
+    Config["Config Control Plane"] --> Django
+    Limiter["DistributedRateLimiter"] --> Django
 ```
 
-## Request Flow: Submission to Verdict
+## Technical Highlights
 
-```mermaid
-sequenceDiagram
-    participant S as Student
-    participant W as Django Web/API
-    participant DB as PostgreSQL
-    participant K as Kafka
-    participant E as Executor Worker
-    participant X as isolate Sandbox
-    participant R as Redis/Channels
+- Django 5 + Django REST Framework for the API and domain logic
+- Django Channels + Redis for realtime room and verdict delivery
+- PostgreSQL as the primary system of record
+- Kafka-backed judging pipeline for asynchronous execution
+- language-routed executor services
+- Linux `isolate` sandboxing for compilation and execution safety
+- bounded retries and dead-letter handling for failed jobs
+- multi-file workspace support with explicit entry-file routing
+- Prometheus instrumentation and Grafana/Prometheus monitoring support
 
-    S->>W: Submit code / files / entry file
-    W->>DB: Persist Submission(status=PENDING)
-    W->>K: Publish submission job
-    K->>E: Deliver queued submission
-    E->>X: Compile and run code in sandbox
-    X-->>E: Execution result(s)
-    E->>W: PATCH submission update callback
-    W->>DB: Persist final verdict + testcase counts
-    W->>R: Broadcast submission update event
-    R-->>S: Live verdict update over WebSocket
-```
+## Product Capabilities
 
-## Service-by-Service Breakdown
+### Exam Management
 
-### Web Tier
+- exam rooms with room codes and teacher ownership
+- question authoring with visible and hidden testcases
+- per-room scheduling controls
+- randomized per-student question assignment
+- participant state restoration after reconnect
 
-**Django + DRF**
-- owns the domain model for rooms, questions, participants, and submissions
-- validates incoming requests and submission payloads
-- persists every submission before queuing it
-- exposes teacher/student APIs and health endpoints
+### Student Workspace
 
-### Realtime Layer
+- multi-file editor
+- entry-file aware execution
+- multiple language support
+- visible testcase iteration with `Run Test`
+- hidden judge evaluation with `Submit`
 
-**Django Channels + Redis**
-- fans out verdict updates to per-user websocket groups
-- supports exam-state notifications without blocking request handlers
-- provides the bridge between executor callbacks and live student UI updates
+### Teacher Experience
 
-### Persistence
+- participant presence and activity visibility
+- live code visibility across assigned questions
+- moderation controls
+- room-level event visibility and audit trails
 
-**PostgreSQL**
-- stores rooms, questions, participants, submissions, and audit events
-- keeps exam state durable even if workers restart
+### Judging Pipeline
 
-### Queue / Coordination
+- persistent submissions before dispatch
+- Kafka-based queue decoupling
+- isolated executor workers
+- final verdict categories including:
+  - `PASSED`
+  - `WRONG_ANSWER`
+  - `TLE`
+  - `MLE`
+  - `RUNTIME_ERROR`
+  - `COMPILATION_ERROR`
+  - `SYSTEM_ERROR`
 
-**Kafka**
-- decouples submission ingestion from execution
-- supports partitioned, async dispatch to executors
-- helps keep request latency low even when judge work is expensive
-
-### Execution Layer
-
-**Executor Core + Executor Java**
-- consume language-routed submission topics
-- compile once and reuse workspaces across judge cases where possible
-- requeue failed jobs with bounded delivery attempts
-- escalate poisoned jobs to a Kafka dead-letter topic for operator inspection
-- push final execution updates back to the web tier
-
-### Isolation Layer
-
-**Linux `isolate`**
-- executes code in sandboxed workspaces
-- enforces time, memory, and output limits
-- cleans up temporary execution state after runs complete
-
-## Security Model for Code Execution
+## Security and Isolation
 
 Judge Vortex treats code execution as a separate trust boundary.
 
-Key decisions:
+- submitted code does not run inside the Django request process
+- executors run in dedicated containers
+- code runs inside isolated sandboxes with time, memory, and output limits
+- unsafe paths are rejected before workspace files are written
+- hidden testcases stay server-side
+- room/question assignment is validated before acceptance
 
-- submitted code never executes inside the Django request path
-- execution happens in dedicated worker containers, not in the web process
-- Linux `isolate` constrains filesystem/process behavior for judged code
-- memory, time, wall-clock, and output limits are applied per run
-- multi-file workspaces are normalized to safe relative paths before execution
-- unsafe paths such as `..` traversal are rejected before files are written
-- hidden testcases are never returned to students in room payloads
-- room/question binding prevents cross-room or unassigned-question submissions
+## AWS Deployment
 
-## Real-Time Event Flow
+This project is deployed as part of an AWS-hosted platform stack. In that environment:
 
-The realtime layer is intentionally narrow and easy to explain:
-
-- Django persists the submission update
-- Django publishes a per-user event to Channels
-- Redis backs the channel layer and group fan-out
-- the student websocket receives a normalized event payload with `schema_version` and `event_type`
-
-Current websocket payloads cover:
-- submission verdict updates
-- participant kick notifications
-
-## Audit Trail
-
-The platform now records major room and submission events in the database:
-
-- room creation, update, deletion
-- question creation, update, deletion
-- participant join, resume, lock, unlock, kick
-- submission receipt, queueing, queue failure, and final update
-- suspicious execution events such as submission bursts, repeated failures, and cross-question code reuse
-
-This makes the system easier to debug, easier to moderate, and much easier to explain in interviews.
+- Judge Vortex is the main public application
+- PostgreSQL, Redis, Kafka, executors, and monitoring run alongside the app tier
+- Config Control Plane and DistributedRateLimiter are connected as internal platform services
+- Prometheus and Grafana provide operational visibility for the full stack
 
 ## Observability
 
-### Prometheus Metrics
+The application exposes operational signals for:
 
-The project exports both framework-level and custom metrics.
-
-Web-tier metrics include:
-- submissions received
-- submissions queued
-- submission verdict counts
-- submission end-to-end latency
-- room join outcomes
-- participant lock/unlock events
-- websocket delivery counters
-- queue depth gauge
-- readiness check results
-- audit event counts
-
-Executor metrics include:
-- submissions consumed by executor workers
-- in-flight grading tasks
-- verdict counts by executor/language/status
-- executor processing latency
-- callback success/failure counts
-- executor failure counts by stage
-- retry counts and dead-letter escalations
-
-### Structured Lifecycle Logging
-
-The web tier and executor workers now emit structured lifecycle logs around:
-- submission receipt
-- queue publish success/failure
-- executor task start/finish/failure
-- callback delivery
-- final verdict persistence
-- audit event creation
-
-## Health and Reliability Features
-
-Implemented platform hardening now includes:
-
-- liveness endpoint: `/api/health/live/`
-- readiness endpoint: `/api/health/ready/`
-- dependency checks for database, cache, and Kafka reachability
-- fail-open queue throttling if Kafka/Redis is unavailable
-- commit-after-persist behavior in executor workers for safer Kafka consumption
-- retrying executor callbacks back to Django before surfacing failure
-- bounded Kafka redelivery with dead-letter escalation after repeated failures
-- Docker healthchecks for Postgres, Redis, Kafka, Nginx, and executor services
-- audit-backed moderation trail for room actions
-- optional queue-lag-based autoscaler for executor services
-
-## Language Support
-
-Current active support:
-
-- `python`
-- `javascript`
-- `ruby`
-- `php`
-- `cpp`
-- `c`
-- `go`
-- `rust`
-- `typescript`
-- `sql`
-- `java`
+- submission volume and verdict distribution
+- executor activity and processing latency
+- room and participant lifecycle events
+- health and readiness state
+- realtime delivery behavior
 
 ## Repository Structure
 
-```text
-judge_vortex/
-├── core_api/                    domain models, APIs, serializers, audit, health, metrics
-├── executor_service/            executor workers, isolate sandbox, grading, worker observability
-├── infrastructure/              Docker Compose, autoscaler, nginx, Prometheus, Grafana wiring
-├── realtime/                    Channels consumers and websocket routing
-├── shared/                      pure judging helpers shared by web and executor layers
-├── templates/                   teacher dashboard, workspace, auth and landing pages
-├── execution_routing.py         topic and executor routing by language
-├── kafka_setup.py               Kafka topic bootstrap and partition management
-├── start_vortex.sh              local platform launcher
-├── start_codespaces.sh          Codespaces launcher
-├── stop_vortex.sh               local shutdown script
-├── Makefile                     developer shortcuts
-└── README.md                    architecture and project narrative
-```
+- `core_api/`: domain models, API views, throttles, moderation, and exam logic
+- `executor_service/`: worker processes, grading, and sandbox integration
+- `shared/`: judging helpers shared across web and executor layers
+- `templates/`: student and teacher UI
+- `infrastructure/`: Docker Compose, monitoring, and deployment support
+- `judge_vortex/`: Django project configuration
 
-## Important Files
+## Summary
 
-- [core_api/views.py](./core_api/views.py)
-- [core_api/models.py](./core_api/models.py)
-- [core_api/serializers.py](./core_api/serializers.py)
-- [core_api/audit.py](./core_api/audit.py)
-- [core_api/metrics.py](./core_api/metrics.py)
-- [core_api/health.py](./core_api/health.py)
-- [executor_service/main.py](./executor_service/main.py)
-- [executor_service/grader.py](./executor_service/grader.py)
-- [executor_service/sandbox.py](./executor_service/sandbox.py)
-- [executor_service/observability.py](./executor_service/observability.py)
-- [execution_routing.py](./execution_routing.py)
-- [infrastructure/autoscaler/autoscale_executors.py](./infrastructure/autoscaler/autoscale_executors.py)
-- [infrastructure/docker-compose.yml](./infrastructure/docker-compose.yml)
-
-## Local Setup
-
-### 1. Install Python dependencies
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-### 2. Configure environment
-
-```bash
-cp .env.example .env
-```
-
-### 3. Start the platform
-
-```bash
-./start_vortex.sh
-```
-
-### 4. Stop the platform
-
-```bash
-./stop_vortex.sh
-```
-
-## Useful Make Targets
-
-```bash
-make start
-make stop
-make migrate
-make check
-make test
-make test-fast
-make kafka-topics
-make autoscale-once
-make autoscale-loop
-```
-
-## Testing
-
-Run the full Django test suite:
-
-```bash
-python3 manage.py test
-```
-
-Fast local test pass with SQLite:
-
-```bash
-DB_ENGINE=sqlite python3 manage.py test core_api.tests realtime.tests
-```
-
-## Scaling Notes
-
-Judge Vortex is already shaped like a horizontally scalable system.
-
-Current scaling levers:
-- Kafka partitions are configurable and currently default to `8`
-- executor families are split by language route
-- executor replica counts are controlled through environment variables
-- isolate box count is configurable and currently defaults to `32` in Compose
-- queue depth is exposed for operational visibility
-- an autoscaler can increase executor replicas from measured Kafka lag
-
-Natural next steps for scaling:
-- add more executor replicas per topic
-- move the web tier from `runserver` to a dedicated ASGI process manager in production
-- shard heavy language families into separate executor pools if needed
-
-## Tradeoffs and Future Improvements
-
-Intentional tradeoffs in the current design:
-
-- websocket delivery is intentionally simple and centered on per-user channels
-- callback auth is still lightweight and could be hardened further for internet-facing deployment
-- autoscaling currently targets Docker Compose replicas for local/demo environments rather than a full Kubernetes-style orchestrator
-- startup scripts are optimized for local reproducibility rather than a full production orchestrator
-
-Strong future improvements:
-- dead-letter replay tooling with an operator UI
-- signed internal executor callbacks
-- richer suspicious-event scoring per room or cohort
-- autoscaling policies driven by Prometheus metrics and SLOs
-- richer teacher timeline UI on top of the audit event model
-
-## Interview Talking Points
-
-1. **Why Kafka instead of judging synchronously?**
-   To keep request latency low and isolate expensive compilation/execution from the web tier.
-
-2. **Why Redis if Kafka already exists?**
-   Kafka handles durable async work; Redis backs low-latency websocket fan-out for live UI updates.
-
-3. **Why split executors by language family?**
-   Different toolchains have different runtime costs and scaling needs. Routing by language keeps workers simpler and scaling more intentional.
-
-4. **Why store submissions before queueing them?**
-   It gives the system a durable source of truth even if Kafka or a worker is temporarily unavailable.
-
-5. **How do you enforce exam integrity?**
-   Room-level assignment, fullscreen gating, lockouts, teacher moderation, suspicious-event detection, and hidden testcase protection all reinforce exam constraints.
-
-6. **What happens if a worker crashes after consuming a message?**
-   Offsets are committed only after the verdict is durably pushed back or the message is requeued/dead-lettered, so work is not silently lost.
-
-7. **How do retries avoid creating an infinite poison-message loop?**
-   Each job carries a bounded `delivery_attempt` count. After the configured limit, it is escalated to a dead-letter topic instead of being retried forever.
-
-8. **How would you scale the system during a contest spike?**
-   Increase Kafka partitions, let the autoscaler raise executor replicas from queue lag, and split heavier language pools further if they become hotspots.
-
-## Resume-Friendly Highlights
-
-- Built a **distributed code execution platform** with Django, DRF, Channels, PostgreSQL, Redis, Kafka, Docker, and Linux `isolate`, supporting **11 languages**, **8 Kafka partitions**, and **32 sandbox slots** for asynchronous code evaluation.
-- Designed a queue-backed execution pipeline with language-routed executor workers, durable submission persistence, bounded retry plus dead-letter escalation, structured audit events, health/readiness checks, Prometheus metrics, and websocket verdict delivery to keep the web tier responsive under load.
-- Implemented proctored exam workflows including timed rooms, randomized question assignment, visible vs hidden testcase evaluation, participant moderation, lockouts, suspicious execution detection, and multi-file workspaces to model realistic coding assessments rather than toy judge behavior.
-
----
-
-<div align="center">
-
-**Judge Vortex is built as a serious backend system first: asynchronous, isolated, observable, and explainable.**
-
-</div>
+Judge Vortex is an exam platform built around asynchronous execution, isolation, realtime delivery, moderation, and operational visibility, with the surrounding platform services connected for runtime control and submission governance.

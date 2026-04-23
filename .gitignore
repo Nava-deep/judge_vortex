@@ -2,4 +2,6 @@ __pycache__/
 *.py[cod]
 .DS_Store
 db.sqlite3
+benchmark_results/*
+!benchmark_results/.gitkeep
 benchmark_results/jv_benchmark_fixture_*.json
