@@ -456,7 +456,6 @@ const boilerplate = {
     'python': 'def solve():\n    print("Hello from Judge Vortex!")\n\nif __name__ == "__main__":\n    solve()',
     'cpp': '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello from Judge Vortex!\\n";\n    return 0;\n}',
     'c': '#include <stdio.h>\n\nint main() {\n    printf("Hello from Judge Vortex!\\n");\n    return 0;\n}',
-    'java': 'import java.util.Scanner;\n\npublic class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello from Judge Vortex!");\n    }\n}',
     'javascript': 'console.log("Hello from Judge Vortex!");',
     'typescript': 'const message: string = "Hello from Judge Vortex!";\nconsole.log(message);',
     'ruby': 'puts "Hello from Judge Vortex!"',
@@ -491,6 +490,22 @@ const languagePathMatchers = {
     php: [/\.php$/i],
     sql: [/\.sql$/i],
 };
+
+function getJavaClassNameForPath(pathValue = null) {
+    const normalizedPath = sanitizeWorkspacePath(pathValue) || getPrimaryFileForLanguage('java');
+    const fileName = normalizedPath.split('/').pop() || 'Main.java';
+    const stem = fileName.includes('.') ? fileName.slice(0, fileName.lastIndexOf('.')) : fileName;
+    const sanitized = stem.replace(/[^A-Za-z0-9_$]/g, '_').replace(/^[^A-Za-z_$]+/, '');
+    return sanitized || 'Main';
+}
+
+function getBoilerplateForLanguage(language, pathValue = null) {
+    if (language === 'java') {
+        const className = getJavaClassNameForPath(pathValue);
+        return `import java.util.Scanner;\n\npublic class ${className} {\n    public static void main(String[] args) {\n        System.out.println("Hello from Judge Vortex!");\n    }\n}`;
+    }
+    return boilerplate[language] || boilerplate['python'];
+}
 
 const languageConf = new Compartment();
 const editableConf = new Compartment();
@@ -598,7 +613,7 @@ function normalizeWorkspaceFiles(language, files = null, primaryContent = null) 
         const primaryFilePath = getPrimaryFileForLanguage(language);
         normalized.unshift({
             path: primaryFilePath,
-            content: primaryContent !== null ? String(primaryContent) : (boilerplate[language] || ''),
+            content: primaryContent !== null ? String(primaryContent) : getBoilerplateForLanguage(language, primaryFilePath),
         });
     }
 
@@ -624,6 +639,64 @@ function getPreferredWorkspaceFileForLanguage(language, preferredPath = null) {
     }
 
     return languageFiles[0].path;
+}
+
+function getFileExtensionForLanguage(language) {
+    const primaryFile = getPrimaryFileForLanguage(language);
+    const dotIndex = primaryFile.lastIndexOf('.');
+    return dotIndex >= 0 ? primaryFile.slice(dotIndex) : '';
+}
+
+function getLanguageAdjustedFilePath(pathValue, language) {
+    const normalizedPath = sanitizeWorkspacePath(pathValue);
+    if (!normalizedPath) return getPrimaryFileForLanguage(language);
+
+    const parentFolder = getParentFolderPath(normalizedPath);
+    const fileName = normalizedPath.split('/').pop() || getPrimaryFileForLanguage(language);
+    const dotIndex = fileName.lastIndexOf('.');
+    const stem = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+    const safeStem = stem || getPrimaryFileForLanguage(language).replace(/\.[^.]+$/, '');
+    const targetName = `${safeStem}${getFileExtensionForLanguage(language)}`;
+    return parentFolder ? `${parentFolder}/${targetName}` : targetName;
+}
+
+function renameEntryWorkspaceFileForLanguage(language) {
+    const sourcePath = sanitizeWorkspacePath(workspaceEntryFilePath) || sanitizeWorkspacePath(activeFilePath);
+    if (!sourcePath) return null;
+
+    const sourceIndex = workspaceFiles.findIndex((file) => file.path === sourcePath);
+    if (sourceIndex < 0) return null;
+
+    const targetPath = getLanguageAdjustedFilePath(sourcePath, language);
+    if (!targetPath) return null;
+
+    if (targetPath === sourcePath) {
+        return sourcePath;
+    }
+
+    const existingTarget = workspaceFiles.find((file) => file.path === targetPath);
+    if (existingTarget) {
+        return existingTarget.path;
+    }
+
+    const previousLanguage = inferLanguageFromPath(sourcePath)
+        || String(languageSelectEl.dataset.previous || initialLang || 'python');
+    const currentFile = workspaceFiles[sourceIndex];
+    const previousBoilerplate = getBoilerplateForLanguage(previousLanguage, sourcePath).trim();
+    const nextContent = String(currentFile.content || '').trim() === previousBoilerplate
+        ? getBoilerplateForLanguage(language, targetPath)
+        : currentFile.content;
+
+    workspaceFiles.splice(sourceIndex, 1, {
+        ...currentFile,
+        path: targetPath,
+        content: nextContent,
+    });
+
+    if (activeFilePath === sourcePath) activeFilePath = targetPath;
+    if (workspaceEntryFilePath === sourcePath) workspaceEntryFilePath = targetPath;
+    ensureFolderVisible(getParentFolderPath(targetPath));
+    return targetPath;
 }
 
 function getAllWorkspaceFolders() {
@@ -784,9 +857,10 @@ function getWorkspacePayload() {
    Editor init
    ------------------------- */
 const initialLang = languageSelectEl.value || 'python';
+const initialEntryFile = getPrimaryFileForLanguage(initialLang);
 const editorView = new EditorView({
     state: EditorState.create({
-        doc: boilerplate[initialLang] || boilerplate['python'],
+        doc: getBoilerplateForLanguage(initialLang, initialEntryFile),
         extensions: [
             basicSetup,
             keymap.of([indentWithTab]),
@@ -797,7 +871,7 @@ const editorView = new EditorView({
     parent: document.getElementById('editorContainer')
 });
 
-resetWorkspaceFiles(initialLang, null, getPrimaryFileForLanguage(initialLang), boilerplate[initialLang] || boilerplate['python']);
+resetWorkspaceFiles(initialLang, null, initialEntryFile, getBoilerplateForLanguage(initialLang, initialEntryFile));
 
 function syncEditorLanguage(language, { updateSelector = true } = {}) {
     const nextLanguage = String(language || initialLang || 'python');
@@ -848,7 +922,15 @@ languageSelectEl.addEventListener('change', (e) => {
     syncEditorLanguage(lang, { updateSelector: false });
 
     if (!workspaceFiles.length) {
-        resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang], []);
+        const primaryFilePath = getPrimaryFileForLanguage(lang);
+        resetWorkspaceFiles(lang, null, primaryFilePath, getBoilerplateForLanguage(lang, primaryFilePath), []);
+        return;
+    }
+
+    const renamedEntryFile = renameEntryWorkspaceFileForLanguage(lang);
+    if (renamedEntryFile) {
+        workspaceEntryFilePath = resolveWorkspaceEntryFile(lang, workspaceFiles, renamedEntryFile);
+        setActiveFile(workspaceEntryFilePath || renamedEntryFile);
         return;
     }
 
@@ -1683,7 +1765,7 @@ function restoreSavedCode(roomId, qId) {
             saved.language || languageSelectEl.value,
             saved.files,
             saved.active_file,
-            saved.code || boilerplate[saved.language] || '',
+            saved.code || getBoilerplateForLanguage(saved.language || languageSelectEl.value, saved.entry_file || saved.active_file) || '',
             saved.folders || []
         );
         workspaceEntryFilePath = resolveWorkspaceEntryFile(saved.language || languageSelectEl.value, workspaceFiles, saved.entry_file || saved.active_file);
@@ -2601,7 +2683,8 @@ window.setActiveQuestion = (qId, roomId, options = {}) => {
     const restored = restoreSavedCode(resolvedRoomId, qId);
     if (!restored) {
         const lang = languageSelectEl.value;
-        resetWorkspaceFiles(lang, null, getPrimaryFileForLanguage(lang), boilerplate[lang] || '');
+        const primaryFilePath = getPrimaryFileForLanguage(lang);
+        resetWorkspaceFiles(lang, null, primaryFilePath, getBoilerplateForLanguage(lang, primaryFilePath));
     }
 
     syncActiveExamSnapshot(true);

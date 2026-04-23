@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import os
 import platform
 import resource
@@ -33,7 +34,7 @@ LANG_CONFIG = {
     },
     "typescript": {
         "entry_filename": "main.ts",
-        "tools": ["npx", "node"],
+        "tools": ["tsc", "node"],
     },
     "sql": {"entry_filename": "query.sql", "tools": ["sqlite3"]},
 }
@@ -44,6 +45,20 @@ MAX_OUTPUT_KB = int(os.getenv("EXECUTOR_MAX_OUTPUT_KB", "1024"))
 MAX_MEMORY_KB = max(1024, MAX_MEMORY_BYTES // 1024)
 COMPILE_MEMORY_KB = max(1024, COMPILE_MEMORY_BYTES // 1024)
 MAX_OUTPUT_BYTES = max(1024, MAX_OUTPUT_KB * 1024)
+COMMON_RUNTIME_TOOL_DIRS = (
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    "/usr/bin",
+    "/usr/sbin",
+    "/bin",
+    "/sbin",
+    "/opt/homebrew/bin",
+)
+NATIVE_MEMORY_BYTES_BY_LANGUAGE = {
+    "javascript": max(MAX_MEMORY_BYTES, 768 * 1024 * 1024),
+    "typescript": max(MAX_MEMORY_BYTES, 768 * 1024 * 1024),
+    "java": max(MAX_MEMORY_BYTES, 512 * 1024 * 1024),
+}
 EXECUTOR_BACKEND = os.getenv("EXECUTOR_BACKEND", "native").strip().lower()
 IS_MAC = platform.system() == "Darwin"
 IS_LINUX = platform.system() == "Linux"
@@ -118,13 +133,33 @@ class PreparedExecution:
             self.temp_dir_ctx.cleanup()
 
 
-def set_limits():
+def _find_runtime_tool(tool):
+    resolved = shutil.which(tool)
+    if resolved:
+        return os.path.realpath(resolved)
+
+    for base_dir in COMMON_RUNTIME_TOOL_DIRS:
+        candidate = os.path.join(base_dir, tool)
+        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+            return os.path.realpath(candidate)
+
+    return None
+
+
+def _get_native_memory_bytes(language=None):
+    if not language:
+        return MAX_MEMORY_BYTES
+    return NATIVE_MEMORY_BYTES_BY_LANGUAGE.get(language, MAX_MEMORY_BYTES)
+
+
+def set_limits(language=None):
     """Apply process limits for native fallback execution."""
+    memory_bytes = _get_native_memory_bytes(language)
     try:
         if not IS_MAC:
-            resource.setrlimit(resource.RLIMIT_AS, (MAX_MEMORY_BYTES, MAX_MEMORY_BYTES))
+            resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
         else:
-            resource.setrlimit(resource.RLIMIT_DATA, (MAX_MEMORY_BYTES, MAX_MEMORY_BYTES))
+            resource.setrlimit(resource.RLIMIT_DATA, (memory_bytes, memory_bytes))
 
         resource.setrlimit(resource.RLIMIT_FSIZE, (1024 * 1024, 1024 * 1024))
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -210,7 +245,7 @@ def get_missing_runtime_tools(language):
     for tool in tools:
         if tool.startswith(".") or tool.startswith("/"):
             continue
-        if shutil.which(tool) is None:
+        if _find_runtime_tool(tool) is None:
             missing.append(tool)
 
     return sorted(set(missing))
@@ -226,7 +261,7 @@ def _resolve_command(parts):
             return [os.path.realpath(tool), *parts[1:]]
         return parts
 
-    resolved = shutil.which(tool)
+    resolved = _find_runtime_tool(tool)
     if not resolved:
         return parts
     return [os.path.realpath(resolved), *parts[1:]]
@@ -290,7 +325,6 @@ def _build_commands(language, entry_file):
         compiled_output = os.path.splitext(normalized_entry_file)[0] + ".js"
         compiled_output = _normalize_relpath(os.path.join("dist", compiled_output))
         return [
-            "npx",
             "tsc",
             normalized_entry_file,
             "--target",
@@ -577,8 +611,17 @@ async def _prepare_isolate_execution(code, language, input_data="", files=None, 
         return {"status": "SYSTEM_ERROR", "output": str(exc), "time_ms": 0}
 
 
-async def prepare_execution(code, language, input_data="", files=None, entry_file=None):
-    if _use_isolate_backend() and not _should_use_native_fallback(language):
+def _should_prepare_with_isolate(language, backend_override=None):
+    normalized_override = str(backend_override or "").strip().lower()
+    if normalized_override == "native":
+        return False
+    if normalized_override == "isolate":
+        return _use_isolate_backend() and not _should_use_native_fallback(language)
+    return _use_isolate_backend() and not _should_use_native_fallback(language)
+
+
+async def prepare_execution(code, language, input_data="", files=None, entry_file=None, backend_override=None):
+    if _should_prepare_with_isolate(language, backend_override=backend_override):
         return await _prepare_isolate_execution(code, language, input_data, files=files, entry_file=entry_file)
     return await _prepare_native_execution(code, language, input_data, files=files, entry_file=entry_file)
 
@@ -596,7 +639,7 @@ async def _execute_native(prepared, input_data, time_limit_ms):
             stdin=stdin_mode,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            preexec_fn=set_limits if not IS_MAC else None,
+            preexec_fn=functools.partial(set_limits, prepared.language) if not IS_MAC else None,
         )
 
         if prepared.language == "sql":
@@ -675,8 +718,15 @@ async def execute_prepared(prepared, input_data, time_limit_ms):
     return await _execute_native(prepared, input_data, time_limit_ms)
 
 
-async def run_code_in_sandbox(code, language, input_data, time_limit_ms, files=None, entry_file=None):
-    prepared = await prepare_execution(code, language, input_data, files=files, entry_file=entry_file)
+async def run_code_in_sandbox(code, language, input_data, time_limit_ms, files=None, entry_file=None, backend_override=None):
+    prepared = await prepare_execution(
+        code,
+        language,
+        input_data,
+        files=files,
+        entry_file=entry_file,
+        backend_override=backend_override,
+    )
     if isinstance(prepared, dict):
         return prepared
 

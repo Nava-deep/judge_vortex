@@ -477,6 +477,7 @@ def execute_submission_inline(submission, user_input, judge_cases, time_limit_ms
             judge_cases[0].get('input', ''),
             files=submission.files,
             entry_file=submission.entry_file,
+            backend_override='native',
         )
 
         if isinstance(prepared, dict):
@@ -562,6 +563,7 @@ def execute_submission_inline(submission, user_input, judge_cases, time_limit_ms
         time_limit_ms,
         files=submission.files,
         entry_file=submission.entry_file,
+        backend_override='native',
     )
 
     if result['status'] == 'TLE':

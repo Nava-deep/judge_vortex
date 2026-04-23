@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from asgiref.sync import async_to_sync
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.test import override_settings
 from django.utils import timezone
 from kafka import TopicPartition
@@ -451,6 +452,7 @@ class RoomScheduleUpdateTests(APITestCase):
 class SubmissionCreateHiddenCasesTests(APITestCase):
     def setUp(self):
         core_views._kafka_producer = None
+        cache.clear()
         self.teacher = User.objects.create_user(username='teacher-submit', password='pass123')
         self.student = User.objects.create_user(username='student-submit', password='pass123')
         self.token = Token.objects.create(user=self.student)
@@ -590,6 +592,34 @@ class SubmissionCreateHiddenCasesTests(APITestCase):
         self.assertFalse(
             ExamEvent.objects.filter(submission=submission, event_type='submission.queued').exists()
         )
+
+    @patch('core_api.views.run_code_in_sandbox')
+    @patch('core_api.views.KafkaProducer')
+    def test_practice_run_without_judge_cases_forces_native_inline_backend(self, kafka_producer_cls, run_code_in_sandbox_mock):
+        run_code_in_sandbox_mock.return_value = {
+            'status': 'SUCCESS',
+            'output': '42',
+            'time_ms': 8,
+        }
+
+        response = self.client.post(
+            '/api/submissions/submit/',
+            {
+                'code': 'print(42)',
+                'files': [
+                    {'path': 'main.py', 'content': 'print(42)'},
+                ],
+                'entry_file': 'main.py',
+                'language': 'python',
+                'room_id': self.room.id,
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['output'].strip(), '42')
+        kafka_producer_cls.assert_not_called()
+        self.assertEqual(run_code_in_sandbox_mock.await_args.kwargs['backend_override'], 'native')
 
     @patch('core_api.views.KafkaProducer')
     def test_practice_run_rejects_entry_file_language_mismatch(self, kafka_producer_cls):
