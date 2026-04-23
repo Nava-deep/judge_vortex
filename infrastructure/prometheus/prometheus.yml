@@ -5,15 +5,24 @@ global:
 scrape_configs:
   - job_name: 'vortex-api'
     metrics_path: /metrics/judge-vortex
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
     static_configs:
-      - targets: ['host.docker.internal:80']
+      - targets: ['host.docker.internal:443']
 
   - job_name: 'config-control'
     metrics_path: /metrics/config-control
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
     static_configs:
-      - targets: ['host.docker.internal:80']
+      - targets: ['host.docker.internal:443']
 
   - job_name: 'distributed-rate-limiter'
     metrics_path: /metrics/distributed-rate-limiter
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true
     static_configs:
-      - targets: ['host.docker.internal:80']
+      - targets: ['host.docker.internal:443']
