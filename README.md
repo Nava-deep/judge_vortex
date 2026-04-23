@@ -128,6 +128,19 @@ This project is deployed as part of an AWS-hosted platform stack. In that enviro
 - Config Control Plane and DistributedRateLimiter are connected as internal platform services
 - Prometheus and Grafana provide operational visibility for the full stack
 
+### AWS Runtime Measurements
+
+The figures below were sampled from the deployed AWS environment on April 23, 2026. They are live deployment measurements, not local development timings.
+
+Public ingress latency:
+
+- `GET /api/health/ready/`: avg `181.79 ms`, p95 `187.12 ms`, p99 `409.93 ms`
+- `GET /login/`: avg `154.04 ms`, p95 `155.80 ms`, p99 `159.02 ms`
+
+Internal service latency on the EC2 host:
+
+- `GET http://127.0.0.1:53562/api/health/ready/`: avg `23.67 ms`, p95 `27.98 ms`, p99 `28.12 ms`
+
 ## Observability
 
 The application exposes operational signals for:
