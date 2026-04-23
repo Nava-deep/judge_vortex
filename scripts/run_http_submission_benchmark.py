@@ -32,6 +32,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture", type=Path, required=True, help="Fixture JSON emitted by seed_benchmark_fixture.py.")
     parser.add_argument("--base-url", required=True, help="Judge Vortex base URL, for example https://judgevortex.duckdns.org.")
     parser.add_argument("--rounds", type=int, default=5, help="Submissions per user.")
+    parser.add_argument(
+        "--max-concurrency",
+        type=int,
+        default=0,
+        help="Maximum number of users allowed to submit concurrently. 0 means unbounded.",
+    )
     parser.add_argument("--poll-interval", type=float, default=2.0, help="Teacher poll interval in seconds.")
     parser.add_argument("--poll-timeout", type=float, default=1800.0, help="How long to wait for verdicts.")
     parser.add_argument("--output", type=Path, required=True, help="Where to write the benchmark JSON summary.")
@@ -120,6 +126,40 @@ async def submit_for_user(
     return successes, failures
 
 
+async def bounded_submit_for_user(
+    semaphore: asyncio.Semaphore | None,
+    *,
+    client: httpx.AsyncClient,
+    base_url: str,
+    user_record: dict[str, Any],
+    room_id: int,
+    question_id: int,
+    submission_payload: dict[str, Any],
+    rounds: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if semaphore is None:
+        return await submit_for_user(
+            client=client,
+            base_url=base_url,
+            user_record=user_record,
+            room_id=room_id,
+            question_id=question_id,
+            submission_payload=submission_payload,
+            rounds=rounds,
+        )
+
+    async with semaphore:
+        return await submit_for_user(
+            client=client,
+            base_url=base_url,
+            user_record=user_record,
+            room_id=room_id,
+            question_id=question_id,
+            submission_payload=submission_payload,
+            rounds=rounds,
+        )
+
+
 async def poll_verdicts(
     client: httpx.AsyncClient,
     base_url: str,
@@ -171,11 +211,13 @@ async def main_async() -> int:
 
     limits = httpx.Limits(max_keepalive_connections=2000, max_connections=4000)
     timeout = httpx.Timeout(30.0, connect=10.0)
+    semaphore = asyncio.Semaphore(args.max_concurrency) if args.max_concurrency > 0 else None
     async with httpx.AsyncClient(limits=limits, timeout=timeout, verify=True) as client:
         acceptance_started = time.perf_counter()
         results = await asyncio.gather(
             *[
-                submit_for_user(
+                bounded_submit_for_user(
+                    semaphore,
                     client=client,
                     base_url=base_url,
                     user_record=user_record,
@@ -256,6 +298,7 @@ async def main_async() -> int:
         "final_status_counts": dict(final_status_counts),
         "poll_count": poll_count,
         "poll_interval_seconds": args.poll_interval,
+        "max_concurrency": args.max_concurrency,
         "missing_verdict_ids": missing_verdict_ids[:50],
         "sample_failures": failures[:50],
         "topology": {
@@ -265,7 +308,7 @@ async def main_async() -> int:
             "supported_languages": 11,
         },
         "notes": (
-            "Live HTTP benchmark against the deployed Judge Vortex stack. "
+            f"HTTP benchmark against the Judge Vortex stack at {base_url}. "
             f"Used {len(users)} pre-seeded student users with {args.rounds} final submissions each "
             f"for a total target of {total_targeted} submissions."
         ),

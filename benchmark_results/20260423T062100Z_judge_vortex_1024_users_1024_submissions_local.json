@@ -1,0 +1,44 @@
+{
+  "run_id": "bench_20260423T062100Z_local_users1024_subs1024",
+  "started_at": "2026-04-23T11:48:36.142099Z",
+  "finished_at": "2026-04-23T11:52:36.462249Z",
+  "target_url": "http://127.0.0.1:53562",
+  "candidates_targeted": 1024,
+  "submissions_targeted": 1024,
+  "accepted_submissions": 1024,
+  "submission_failures": 0,
+  "verdicts_observed": 1024,
+  "acceptance_wall_seconds": 16.1,
+  "verdict_wall_seconds": 203.427,
+  "submission_ingest_rate_per_sec": 63.6,
+  "submit_latency_ms": {
+    "avg": 989.41,
+    "p95": 1245.44,
+    "p99": 1345.41
+  },
+  "execution_time_ms": {
+    "avg": 31.79,
+    "p95": 47.0,
+    "p99": 64.54
+  },
+  "approx_end_to_end_seconds": {
+    "avg": 102.62,
+    "p95": 193.44,
+    "p99": 201.43
+  },
+  "final_status_counts": {
+    "PASSED": 1024
+  },
+  "poll_count": 98,
+  "poll_interval_seconds": 2.0,
+  "max_concurrency": 64,
+  "missing_verdict_ids": [],
+  "sample_failures": [],
+  "topology": {
+    "executor_services": 2,
+    "kafka_partitions": 8,
+    "sandbox_slots": 32,
+    "supported_languages": 11
+  },
+  "notes": "HTTP benchmark against the Judge Vortex stack at http://127.0.0.1:53562. Used 1024 pre-seeded student users with 1 final submissions each for a total target of 1024 submissions."
+}
