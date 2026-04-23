@@ -418,6 +418,10 @@ const submitBtnEl = document.getElementById('submitBtn');
 const finishExamBtnEl = document.getElementById('finishExamBtn');
 const examRefreshBtnEl = document.getElementById('examRefreshBtn');
 const languageSelectEl = document.getElementById('language');
+const runButtonDefaultHtml = runBtnEl.innerHTML;
+const runButtonEnabledClass = 'bg-gray-800 hover:bg-black text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
+const runButtonDisabledClass = 'bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
+const runButtonPendingHtml = '<span class="mr-2 font-mono text-slate-500">...</span>Waiting...';
 
 let currentMode = "practice"; 
 let questionVerdicts = new Map(); // Tracks state: EVALUATING, PASSED, WRONG_ANSWER
@@ -1194,12 +1198,26 @@ function isTerminalSubmissionStatus(status) {
     return !['PENDING', 'PROCESSING'].includes(String(status || '').toUpperCase());
 }
 
+function isPendingSubmissionStatus(status) {
+    return ['PENDING', 'PROCESSING'].includes(String(status || '').toUpperCase());
+}
+
 function isRunBusy() {
     return activeRunSubmissionId !== null;
 }
 
+function isAnySubmissionPending() {
+    return isRunBusy() || pendingExamQuestionSubmissions.size > 0;
+}
+
 function isCurrentExamQuestionPendingSubmission() {
     return Boolean(activeExamQuestionId && pendingExamQuestionSubmissions.has(Number(activeExamQuestionId)));
+}
+
+function updateRunActionState(disabled = false, pending = false) {
+    runBtnEl.disabled = disabled;
+    runBtnEl.className = disabled ? runButtonDisabledClass : runButtonEnabledClass;
+    runBtnEl.innerHTML = pending ? runButtonPendingHtml : runButtonDefaultHtml;
 }
 
 function markRunSubmissionPending(submissionId = '__request__') {
@@ -1383,6 +1401,61 @@ async function fetchSubmissionStatus(submissionId) {
     }
 
     return readJsonSafe(response);
+}
+
+async function fetchLatestPendingSubmission() {
+    const response = await fetch('/api/submissions/', {
+        headers: { 'Authorization': `Token ${token}` }
+    });
+
+    if (!response.ok) {
+        return null;
+    }
+
+    const payload = await readJsonSafe(response);
+    const submissions = Array.isArray(payload) ? payload : payload.results || [];
+    return submissions.find((submission) => isPendingSubmissionStatus(submission.status || submission.result)) || null;
+}
+
+async function restorePendingSubmissionLock(preloadedSubmission = null) {
+    const pendingSubmission = preloadedSubmission || await fetchLatestPendingSubmission();
+    if (!pendingSubmission) {
+        return false;
+    }
+
+    const submissionId = Number(pendingSubmission.id || pendingSubmission.submission_id || 0) || null;
+    if (!submissionId) {
+        return false;
+    }
+
+    if (!isPendingSubmissionStatus(pendingSubmission.status || pendingSubmission.result)) {
+        return false;
+    }
+
+    const questionId = Number(pendingSubmission.question_id || pendingSubmission.question || 0) || null;
+    submissionCache[submissionId] = pendingSubmission;
+
+    if (questionId) {
+        if (activeRunSubmissionId === '__request__') {
+            activeRunSubmissionId = null;
+        }
+        markExamQuestionSubmissionPending(questionId);
+        pendingEvaluations.set(submissionId, questionId);
+        if (Number(activeExamQuestionId) === questionId) {
+            renderExamSubmissionPlaceholder(questionId);
+        }
+    } else {
+        markRunSubmissionPending(submissionId);
+        terminalEl.innerHTML = '<div class="text-yellow-600 italic font-mono text-sm animate-pulse">A submission is already running. Waiting for the result...</div>';
+    }
+
+    if (!submissionPollers.has(submissionId)) {
+        beginSubmissionTracking(submissionId, questionId);
+    } else {
+        refreshExamActionState();
+    }
+
+    return true;
 }
 
 function handleSubmissionResolution(submission) {
@@ -1898,7 +1971,7 @@ function updateFinishButtonState(completed = false) {
    ------------------------- */
 runBtnEl.onclick = async (e) => {
     e.preventDefault();
-    if (isRunBusy()) return;
+    if (isAnySubmissionPending()) return;
     
     document.getElementById('tab-console').click();
     const lang = languageSelectEl.value;
@@ -1932,6 +2005,10 @@ runBtnEl.onclick = async (e) => {
         const data = await readJsonSafe(res);
 
         if (!res.ok) {
+            const recoveredPending = res.status === 429 ? await restorePendingSubmissionLock() : false;
+            if (recoveredPending) {
+                return;
+            }
             clearRunSubmissionPending();
             terminalEl.innerHTML = `<div class="text-red-500 font-mono">Error: ${escapeHtml(formatApiError(data, "Execution failed"))}</div>`;
             return;
@@ -1961,10 +2038,11 @@ submitBtnEl.onclick = async (e) => {
     e.preventDefault();
     
     if (currentMode !== "exam" || !activeExamQuestionId) return; 
-    if (isCurrentExamQuestionPendingSubmission()) return;
+    if (isAnySubmissionPending()) return;
 
     const workspacePayload = getWorkspacePayload();
     if (!ensureEntryFileLanguageMatches(workspacePayload.entry_file, languageSelectEl.value)) return;
+    const previousQuestionVerdict = questionVerdicts.get(activeExamQuestionId) || '';
 
     applyQuestionVerdict(activeExamQuestionId, 'EVALUATING');
     markExamQuestionSubmissionPending(activeExamQuestionId);
@@ -2005,6 +2083,10 @@ submitBtnEl.onclick = async (e) => {
             }
         } else {
             clearExamQuestionSubmissionPending(activeExamQuestionId);
+            if (res.status === 429 && await restorePendingSubmissionLock()) {
+                applyQuestionVerdict(activeExamQuestionId, previousQuestionVerdict);
+                return;
+            }
             terminalEl.innerHTML = `<div class="text-red-500 font-mono">Submit Error: ${escapeHtml(formatApiError(data, 'Unknown'))}</div>`;
             applyQuestionVerdict(activeExamQuestionId, 'ERROR');
         }
@@ -2032,7 +2114,7 @@ setInterval(() => {
 
 document.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        if (e.repeat || isRunBusy() || runBtnEl.disabled) {
+        if (e.repeat || isAnySubmissionPending() || runBtnEl.disabled) {
             e.preventDefault();
             return;
         }
@@ -2259,10 +2341,11 @@ function refreshExamActionState() {
     const hasActiveQuestion = Boolean(activeExamQuestionId);
     const activeVerdict = normalizeVerdictStatus(questionVerdicts.get(activeExamQuestionId) || '');
     const currentExamQuestionPending = isCurrentExamQuestionPendingSubmission();
+    const hasPendingSubmission = isAnySubmissionPending();
 
     if (!isExamActive || currentMode !== 'exam') {
         setEditorEditable(true);
-        runBtnEl.disabled = isRunBusy();
+        updateRunActionState(hasPendingSubmission, hasPendingSubmission);
         submitBtnEl.disabled = false;
         submitBtnEl.innerText = 'Submit';
         submitBtnEl.className = 'bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-lg';
@@ -2272,7 +2355,7 @@ function refreshExamActionState() {
 
     if (waitingVisible || fullscreenBlocked) {
         setEditorEditable(false);
-        runBtnEl.disabled = true;
+        updateRunActionState(true, false);
         submitBtnEl.disabled = true;
         submitBtnEl.innerText = 'Submit';
         submitBtnEl.className = 'bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
@@ -2282,7 +2365,7 @@ function refreshExamActionState() {
 
     if (!hasActiveQuestion) {
         setEditorEditable(false);
-        runBtnEl.disabled = true;
+        updateRunActionState(true, false);
         submitBtnEl.disabled = true;
         submitBtnEl.innerText = 'Select a Question';
         submitBtnEl.className = 'bg-slate-300 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
@@ -2291,11 +2374,14 @@ function refreshExamActionState() {
     }
 
     setEditorEditable(true);
-    runBtnEl.disabled = isRunBusy() || currentExamQuestionPending;
+    updateRunActionState(hasPendingSubmission, hasPendingSubmission);
 
-    submitBtnEl.disabled = currentExamQuestionPending;
+    submitBtnEl.disabled = hasPendingSubmission;
     if (currentExamQuestionPending) {
         submitBtnEl.innerText = 'Submitting...';
+        submitBtnEl.className = 'bg-slate-400 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
+    } else if (hasPendingSubmission) {
+        submitBtnEl.innerText = 'Waiting...';
         submitBtnEl.className = 'bg-slate-400 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition flex items-center shadow-none cursor-not-allowed';
     } else {
         submitBtnEl.innerText = activeVerdict === 'PASSED' ? 'Submit Again' : 'Submit';
@@ -2649,7 +2735,7 @@ function switchToPractice() {
     isExamActive = false;
     updateSubmitVisibility();
     setEditorEditable(true);
-    document.getElementById('runBtn').disabled = false;
+    updateRunActionState(isAnySubmissionPending(), isAnySubmissionPending());
     document.getElementById('workspaceShell').classList.remove('exam-active');
     applyWorkspacePanelLayout('practice');
     document.getElementById('inputBottomLabel').innerText = 'Standard Input (stdin)';
@@ -2725,7 +2811,11 @@ function showWaitingRoom(title, teacher, startTimeMs, deadlineStr) {
 
 // BOOTSTRAP APP
 updateSubmitVisibility();
-resumeActiveExam();
+(async () => {
+    await resumeActiveExam();
+    await restorePendingSubmissionLock();
+    refreshExamActionState();
+})();
 
 </script>
 </body>
