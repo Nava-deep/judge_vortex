@@ -1,4 +1,4 @@
-.PHONY: start stop start-codespaces migrate makemigrations check test test-fast kafka-topics autoscale-once autoscale-loop
+.PHONY: start stop stop-wipe start-codespaces migrate makemigrations check test test-fast kafka-topics autoscale-once autoscale-loop
 
 PYTHON ?= python3
 
@@ -7,6 +7,9 @@ start:
 
 stop:
 	./stop_vortex.sh
+
+stop-wipe:
+	./stop_vortex.sh --wipe
 
 start-codespaces:
 	./start_codespaces.sh
