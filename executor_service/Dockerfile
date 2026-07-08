@@ -58,14 +58,16 @@ CMD ["python3", "main.py"]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 3: executor-core
-#   - C/C++  → GCC 14 (gcc-14 / g++-14) via bookworm-backports
-#   - Go     → 1.24.5 official tarball (upstream)
-#   - Node   → 22 LTS via NodeSource
-#   - Rust   → latest stable via rustup
-#   - PHP    → 8.3 via Sury repo
-#   - Ruby   → 3.3 via bookworm-backports
-#   - SQLite → system package
-#   - TypeScript → latest via npm
+#   Works on both amd64 AND arm64 (Apple Silicon)
+#
+#   C/C++      → GCC 12 (bookworm default, available on all arches)  C++20/C17
+#   Go         → 1.24.5 official tarball (arch-aware)
+#   Node.js    → 22 LTS via NodeSource (supports arm64)
+#   Rust       → latest stable via rustup (supports arm64)
+#   PHP        → 8.2 from bookworm main (available on all arches)
+#   Ruby       → 3.1 from bookworm main (available on all arches)
+#   SQLite     → system package
+#   TypeScript → latest via npm
 # ─────────────────────────────────────────────────────────────────────────────
 FROM executor-common AS executor-core
 
@@ -76,53 +78,32 @@ ENV DEBIAN_FRONTEND=noninteractive \
     CARGO_HOME=/opt/cargo \
     PATH=/usr/local/go/bin:/opt/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-# ── System tools & backports for GCC 14 / Ruby 3.3 ──────────────────────────
+# ── C/C++ 12, Ruby 3.1, PHP 8.2, SQLite — all from bookworm main (arm64+amd64)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
+    build-essential \
+    g++ \
+    gcc \
     curl \
+    ca-certificates \
     gnupg \
-    lsb-release \
+    php-cli \
+    ruby-full \
     sqlite3 \
-    && echo "deb http://deb.debian.org/debian bookworm-backports main" \
-       > /etc/apt/sources.list.d/backports.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-       gcc-14 \
-       g++-14 \
-       cpp-14 \
-       ruby3.3 \
-       ruby3.3-dev \
-    && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100 \
-    && update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100 \
-    && update-alternatives --install /usr/bin/cc  cc  /usr/bin/gcc-14 100 \
-    && update-alternatives --install /usr/bin/c++ c++ /usr/bin/g++-14 100 \
-    && update-alternatives --install /usr/bin/ruby ruby /usr/bin/ruby3.3 100 \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Go 1.24.5 (official upstream tarball) ────────────────────────────────────
-RUN curl -fsSL https://go.dev/dl/go1.24.5.linux-amd64.tar.gz \
-    | tar -C /usr/local -xz \
+# ── Go 1.24.5 — official upstream tarball, architecture-aware ────────────────
+RUN ARCH="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://go.dev/dl/go1.24.5.linux-${ARCH}.tar.gz" \
+       | tar -C /usr/local -xz \
     && mkdir -p /opt/go
 
-# ── Node.js 22 LTS (NodeSource) ──────────────────────────────────────────────
+# ── Node.js 22 LTS — NodeSource official (supports arm64 + amd64) ────────────
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/* \
     && npm install -g typescript
 
-# ── PHP 8.3 (Sury official repo) ─────────────────────────────────────────────
-RUN curl -fsSL https://packages.sury.org/php/apt.gpg \
-       -o /etc/apt/trusted.gpg.d/sury-php.gpg \
-    && echo "deb https://packages.sury.org/php/ bookworm main" \
-       > /etc/apt/sources.list.d/sury-php.list \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-       php8.3-cli \
-       php8.3-common \
-    && update-alternatives --install /usr/bin/php php /usr/bin/php8.3 100 \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── Rust latest stable (rustup) ───────────────────────────────────────────────
+# ── Rust latest stable via rustup (supports arm64 + amd64) ───────────────────
 RUN curl -fsSL https://sh.rustup.rs \
     | sh -s -- -y --no-modify-path --default-toolchain stable --profile minimal \
     && /opt/cargo/bin/rustup update stable \
@@ -131,8 +112,7 @@ RUN curl -fsSL https://sh.rustup.rs \
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 4: executor-java
-#   - Java 21 LTS (Temurin) — stable LTS, widely used in competitive programming
-#   - Java 24 (Temurin)     — latest non-LTS for modern features
+#   Java 21 LTS via Temurin (Adoptium) — supports arm64 + amd64
 # ─────────────────────────────────────────────────────────────────────────────
 FROM executor-common AS executor-java
 
@@ -149,6 +129,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
        temurin-21-jdk \
-    && update-alternatives --install /usr/bin/java   java   /opt/java/21/bin/java   100 \
-    && update-alternatives --install /usr/bin/javac  javac  /opt/java/21/bin/javac  100 \
     && rm -rf /var/lib/apt/lists/*

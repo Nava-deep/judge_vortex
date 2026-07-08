@@ -23,30 +23,33 @@ MAKE_MIGRATIONS="${MAKE_MIGRATIONS:-0}"
 POSTGRES_USER="${POSTGRES_USER:-vortex_admin}"
 POSTGRES_DB="${POSTGRES_DB:-judge_vortex_db}"
 
-# ─── CHECKSUM FILE (tracks if Dockerfile or sandbox changed) ─────────────────
-CHECKSUM_FILE=".vortex_image_checksum"
+# ─── IMPORTANT: Capture root dir BEFORE any cd ────────────────────────────────
+ROOT_DIR="$(pwd)"
+CHECKSUM_FILE="${ROOT_DIR}/.vortex_image_checksum"
 CHECKSUM_SOURCES="executor_service/Dockerfile executor_service/sandbox.py executor_service/main.py executor_service/grader.py shared"
 
 _compute_checksum() {
-  find ${CHECKSUM_SOURCES} -type f | sort | xargs md5sum 2>/dev/null | md5sum | awk '{print $1}'
+  # Run from ROOT_DIR so paths are always correct regardless of current dir
+  (cd "${ROOT_DIR}" && find ${CHECKSUM_SOURCES} -type f 2>/dev/null | sort | xargs md5 -q 2>/dev/null || find ${CHECKSUM_SOURCES} -type f 2>/dev/null | sort | xargs md5sum 2>/dev/null) | md5sum | awk '{print $1}'
+}
+
+_images_exist() {
+  docker images --format '{{.Repository}}' 2>/dev/null | grep -q "vortex-core"
 }
 
 _needs_rebuild() {
-  local current_checksum
-  current_checksum=$(_compute_checksum)
   if [ ! -f "${CHECKSUM_FILE}" ]; then
     echo "[build] No previous build record found. Building executor images..."
     return 0
   fi
-  local saved_checksum
+  local current_checksum saved_checksum
+  current_checksum=$(_compute_checksum)
   saved_checksum=$(cat "${CHECKSUM_FILE}")
   if [ "${current_checksum}" != "${saved_checksum}" ]; then
     echo "[build] Executor source files changed. Rebuilding images automatically..."
     return 0
   fi
-  # Also check if the actual docker images exist at all
-  if ! docker image inspect vortex-core-executor-core >/dev/null 2>&1 && \
-     ! docker images --format '{{.Repository}}' | grep -q "vortex-core"; then
+  if ! _images_exist; then
     echo "[build] Docker images not found locally. Building executor images..."
     return 0
   fi
@@ -74,31 +77,27 @@ pkill -f "infrastructure/autoscaler/autoscale_executors.py" 2>/dev/null || true
 echo "[network] Ensuring vortex-bridge network exists..."
 docker network inspect vortex-bridge >/dev/null 2>&1 || docker network create vortex-bridge
 
-# ─── 4. AUTO-DETECT BUILD NEED & REMOVE OLD IMAGES ──────────────────────────
-cd infrastructure
-
+# ─── 4. AUTO-DETECT BUILD NEED (must happen BEFORE cd infrastructure) ─────────
+_SHOULD_SAVE_CHECKSUM=0
 COMPOSE_UP_ARGS=(-d --remove-orphans)
-EXECUTOR_SERVICES=()
-SCALE_ARGS=()
 
 if _needs_rebuild; then
   echo "[build] Removing old executor images to force a clean rebuild..."
-  # Remove old executor images (by compose project label)
-  docker images --format '{{.Repository}}:{{.Tag}}' \
+  docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
     | grep -E '^vortex-core' \
     | xargs -r docker rmi -f 2>/dev/null || true
-  # Also prune dangling (untagged) build cache layers
   docker builder prune -f --filter "until=24h" >/dev/null 2>&1 || true
   COMPOSE_UP_ARGS+=(--build)
   _SHOULD_SAVE_CHECKSUM=1
 else
   echo "[build] Executor images are up to date. Skipping rebuild."
-  _SHOULD_SAVE_CHECKSUM=0
 fi
 
 # ─── 5. START ALL SERVICES ───────────────────────────────────────────────────
 echo "[docker] Launching core infrastructure (DB, Kafka, Redis, Nginx)..."
 CORE_SERVICES=(db zookeeper kafka redis nginx)
+EXECUTOR_SERVICES=()
+SCALE_ARGS=()
 
 if [ "${EXECUTOR_CORE_REPLICAS}" -gt 0 ]; then
   EXECUTOR_SERVICES+=(executor-core)
@@ -109,6 +108,8 @@ if [ "${EXECUTOR_JAVA_REPLICAS}" -gt 0 ]; then
   SCALE_ARGS+=(--scale "executor-java=${EXECUTOR_JAVA_REPLICAS}")
 fi
 
+cd "${ROOT_DIR}/infrastructure"
+
 docker compose -p vortex-core up "${COMPOSE_UP_ARGS[@]}" \
   "${SCALE_ARGS[@]}" \
   "${CORE_SERVICES[@]}" \
@@ -117,10 +118,10 @@ docker compose -p vortex-core up "${COMPOSE_UP_ARGS[@]}" \
 echo "[docker] Launching monitoring stack (Prometheus, Grafana)..."
 docker compose -f docker-compose.monitor.yml -p vortex-monitor up -d --remove-orphans
 
-cd ..
+cd "${ROOT_DIR}"
 
 # ─── 6. SAVE CHECKSUM (after successful build) ───────────────────────────────
-if [ "${_SHOULD_SAVE_CHECKSUM:-0}" = "1" ]; then
+if [ "${_SHOULD_SAVE_CHECKSUM}" = "1" ]; then
   _save_checksum
   echo "[build] New image checksum saved. Next 'make start' will skip rebuild."
 fi

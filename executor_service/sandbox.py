@@ -296,7 +296,7 @@ def _build_commands(language, entry_file):
         return [
             "/bin/sh",
             "-lc",
-            f"g++ -O2 -std=c++23 {quoted_entry_file} $(find . -type f -name '*.cpp' ! -path './{normalized_entry_file}' | sort) -o out",
+            f"g++ -O2 -std=c++20 {quoted_entry_file} $(find . -type f -name '*.cpp' ! -path './{normalized_entry_file}' | sort) -o out",
         ], ["./out"]
     if language == "c":
         return [
