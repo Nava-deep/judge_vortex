@@ -88,15 +88,23 @@ LANGUAGE_ISOLATE_CONFIG = {
     "go": {
         "env": {
             "GOCACHE": "/box/.cache/go-build",
+            "GOROOT": "/usr/local/go",
         }
     },
     "java": {
         "dirs": [
-            "/etc/java-17-openjdk=/etc/java-17-openjdk:maybe",
+            "/opt/java=/opt/java:maybe",
+            "/etc/java-21-openjdk=/etc/java-21-openjdk:maybe",
         ],
         "env": {
-            "JAVA_HOME": JAVA_HOME or "",
+            "JAVA_HOME": JAVA_HOME or "/opt/java/21",
         },
+    },
+    "rust": {
+        "env": {
+            "CARGO_HOME": "/opt/cargo",
+            "RUSTUP_HOME": "/opt/rustup",
+        }
     },
 }
 NATIVE_FALLBACK_LANGUAGES = set()
@@ -288,27 +296,27 @@ def _build_commands(language, entry_file):
         return [
             "/bin/sh",
             "-lc",
-            f"g++ -O3 {quoted_entry_file} $(find . -type f -name '*.cpp' ! -path './{normalized_entry_file}' | sort) -o out",
+            f"g++ -O2 -std=c++23 {quoted_entry_file} $(find . -type f -name '*.cpp' ! -path './{normalized_entry_file}' | sort) -o out",
         ], ["./out"]
     if language == "c":
         return [
             "/bin/sh",
             "-lc",
-            f"gcc -O3 {quoted_entry_file} $(find . -type f -name '*.c' ! -path './{normalized_entry_file}' | sort) -o out",
+            f"gcc -O3 -std=c17 {quoted_entry_file} $(find . -type f -name '*.c' ! -path './{normalized_entry_file}' | sort) -o out",
         ], ["./out"]
     if language == "go":
-        return ["/bin/sh", "-lc", "go build -o out $(find . -type f -name '*.go' | sort)"], ["./out"]
+        return ["/bin/sh", "-lc", "/usr/local/go/bin/go build -o out $(find . -type f -name '*.go' | sort)"], ["./out"]
     if language == "rust":
-        return ["rustc", "-O", normalized_entry_file, "-o", "out"], ["./out"]
+        return ["rustc", "-O", "--edition=2021", normalized_entry_file, "-o", "out"], ["./out"]
     if language == "java":
         class_name = os.path.splitext(os.path.basename(normalized_entry_file))[0]
         class_dir = os.path.dirname(normalized_entry_file) or "."
         return [
             "javac",
+            "--release", "21",
             "-J-Xms8m",
-            "-J-Xmx96m",
+            "-J-Xmx128m",
             "-J-XX:ReservedCodeCacheSize=32m",
-            "-J-XX:CompressedClassSpaceSize=16m",
             "-J-XX:+UseSerialGC",
             normalized_entry_file,
         ], [
@@ -316,7 +324,6 @@ def _build_commands(language, entry_file):
             "-Xms8m",
             "-Xmx64m",
             "-XX:ReservedCodeCacheSize=32m",
-            "-XX:CompressedClassSpaceSize=16m",
             "-XX:+UseSerialGC",
             "-cp",
             class_dir,
