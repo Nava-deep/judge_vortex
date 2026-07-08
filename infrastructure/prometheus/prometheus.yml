@@ -1,28 +1,22 @@
 global:
-  scrape_interval: 1m
+  scrape_interval: 15s
   scrape_timeout: 10s
 
 scrape_configs:
   - job_name: 'vortex-api'
     metrics_path: /metrics/judge-vortex
-    scheme: https
-    tls_config:
-      insecure_skip_verify: true
+    scheme: http
     static_configs:
-      - targets: ['host.docker.internal:443']
+      - targets: ['host.docker.internal:53562']
 
-  - job_name: 'config-control'
-    metrics_path: /metrics/config-control
-    scheme: https
-    tls_config:
-      insecure_skip_verify: true
+  - job_name: 'executor-core'
+    metrics_path: /metrics
+    scheme: http
     static_configs:
-      - targets: ['host.docker.internal:443']
+      - targets: ['executor-core:8001']
 
-  - job_name: 'distributed-rate-limiter'
-    metrics_path: /metrics/distributed-rate-limiter
-    scheme: https
-    tls_config:
-      insecure_skip_verify: true
+  - job_name: 'executor-java'
+    metrics_path: /metrics
+    scheme: http
     static_configs:
-      - targets: ['host.docker.internal:443']
+      - targets: ['executor-java:8002']
